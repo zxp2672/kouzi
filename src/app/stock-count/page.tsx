@@ -30,12 +30,18 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
 
 interface Warehouse {
   id: number;
   code: string;
   name: string;
+}
+
+interface Product {
+  id: number;
+  code: string;
+  name: string;
+  unit: string;
 }
 
 interface StockCountItem {
@@ -58,11 +64,57 @@ interface StockCountOrder {
   remark: string;
   created_by: string;
   created_at: string;
+  items?: StockCountItem[];
 }
+
+// Mock数据
+const mockWarehouses: Warehouse[] = [
+  { id: 1, code: 'WH001', name: '主仓库' },
+  { id: 2, code: 'WH002', name: '分仓库' },
+];
+
+const mockProducts: Product[] = [
+  { id: 1, code: 'PRD001', name: '对讲机', unit: '台' },
+  { id: 2, code: 'PRD002', name: '警棍', unit: '根' },
+  { id: 3, code: 'PRD003', name: '防刺服', unit: '件' },
+];
+
+const mockStockCountOrders: StockCountOrder[] = [
+  {
+    id: 1,
+    order_no: 'SC202401001',
+    warehouse_id: 1,
+    warehouse_name: '主仓库',
+    status: 'completed',
+    count_date: '2024-01-15',
+    remark: '月度盘点',
+    created_by: '张三',
+    created_at: '2024-01-15T08:00:00Z',
+    items: [
+      { product_id: 1, product_code: 'PRD001', product_name: '对讲机', system_quantity: 150, actual_quantity: '150', difference: 0, remark: '' },
+      { product_id: 2, product_code: 'PRD002', product_name: '警棍', system_quantity: 300, actual_quantity: '298', difference: -2, remark: '损耗2根' },
+    ],
+  },
+  {
+    id: 2,
+    order_no: 'SC202401002',
+    warehouse_id: 2,
+    warehouse_name: '分仓库',
+    status: 'pending',
+    count_date: '2024-01-20',
+    remark: '季度盘点',
+    created_by: '李四',
+    created_at: '2024-01-20T09:00:00Z',
+    items: [
+      { product_id: 3, product_code: 'PRD003', product_name: '防刺服', system_quantity: 80, actual_quantity: '', difference: 0, remark: '' },
+    ],
+  },
+];
 
 export default function StockCountPage() {
   const [orders, setOrders] = useState<StockCountOrder[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -71,7 +123,6 @@ export default function StockCountPage() {
   const [countDate, setCountDate] = useState(new Date().toISOString().split('T')[0]);
   const [remark, setRemark] = useState('');
   const [items, setItems] = useState<StockCountItem[]>([]);
-  const [editingOrder, setEditingOrder] = useState<StockCountOrder | null>(null);
 
   useEffect(() => {
     fetchOrders();
@@ -81,38 +132,16 @@ export default function StockCountPage() {
 
   const fetchOrders = async () => {
     try {
-      const client = getSupabaseClient();
-      let query = client
-        .from('stock_counts')
-        .select('*, warehouses(*)')
-        .order('created_at', { ascending: false });
-
-      if (searchQuery) {
-        query = query.or(`order_no.ilike.%${searchQuery}%`);
+      const savedOrders = localStorage.getItem('stock_count_orders');
+      if (savedOrders) {
+        setOrders(JSON.parse(savedOrders));
+      } else {
+        setOrders(mockStockCountOrders);
+        localStorage.setItem('stock_count_orders', JSON.stringify(mockStockCountOrders));
       }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      setOrders(
-        data?.map((order: {
-          id: number;
-          order_no: string;
-          warehouse_id: number;
-          warehouses?: { name: string };
-          status: string;
-          count_date: string;
-          remark: string;
-          created_by: string;
-          created_at: string;
-        }) => ({
-          ...order,
-          warehouse_name: order.warehouses?.name || '',
-        })) || []
-      );
     } catch (error) {
       console.error('获取盘点单列表失败:', error);
+      setOrders(mockStockCountOrders);
     } finally {
       setLoading(false);
     }
@@ -120,93 +149,31 @@ export default function StockCountPage() {
 
   const fetchWarehouses = async () => {
     try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('warehouses')
-        .select('*')
-        .eq('is_active', true);
-
-      if (error) throw error;
-      setWarehouses(data || []);
+      const savedWarehouses = localStorage.getItem('warehouses');
+      if (savedWarehouses) {
+        setWarehouses(JSON.parse(savedWarehouses));
+      } else {
+        setWarehouses(mockWarehouses);
+        localStorage.setItem('warehouses', JSON.stringify(mockWarehouses));
+      }
     } catch (error) {
       console.error('获取仓库列表失败:', error);
+      setWarehouses(mockWarehouses);
     }
   };
 
   const fetchProducts = async () => {
     try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
-        .order('code');
-
-      if (error) throw error;
-      // setProducts(data || []);
+      const savedProducts = localStorage.getItem('products');
+      if (savedProducts) {
+        setProducts(JSON.parse(savedProducts));
+      } else {
+        setProducts(mockProducts);
+        localStorage.setItem('products', JSON.stringify(mockProducts));
+      }
     } catch (error) {
       console.error('获取商品列表失败:', error);
-    }
-  };
-
-  const fetchInventory = async (warehouseId: string) => {
-    try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('inventory')
-        .select('*, products(*)')
-        .eq('warehouse_id', parseInt(warehouseId));
-
-      if (error) throw error;
-
-      const inventoryItems = data?.map((item: any) => ({
-        product_id: item.product_id,
-        product_code: item.products?.code || '',
-        product_name: item.products?.name || '',
-        quantity: item.quantity || 0,
-      })) || [];
-
-      // setInventory(inventoryItems);
-
-      // 初始化盘点明细
-      setItems(
-        inventoryItems.map((item) => ({
-          product_id: item.product_id,
-          product_code: item.product_code,
-          product_name: item.product_name,
-          system_quantity: item.quantity,
-          actual_quantity: item.quantity.toString(),
-          difference: 0,
-          remark: '',
-        }))
-      );
-    } catch (error) {
-      console.error('获取库存信息失败:', error);
-    }
-  };
-
-  const fetchStockCountItems = async (orderId: number) => {
-    try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('stock_count_items')
-        .select('*, products(*)')
-        .eq('order_id', orderId);
-
-      if (error) throw error;
-
-      return data?.map((item: any) => ({
-        product_id: item.product_id,
-        product_code: item.products?.code || '',
-        product_name: item.products?.name || '',
-        system_quantity: item.system_quantity,
-        actual_quantity: item.actual_quantity.toString(),
-        difference: item.difference || 0,
-        remark: item.remark || '',
-      })) || [];
-    } catch (error) {
-      console.error('获取盘点明细失败:', error);
-      return [];
+      setProducts(mockProducts);
     }
   };
 
@@ -217,225 +184,104 @@ export default function StockCountPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const handleWarehouseChange = (value: string) => {
-    setSelectedWarehouse(value);
-    if (value && !editingOrder) {
-      fetchInventory(value);
-    }
-  };
-
-  const handleActualQuantityChange = (index: number, value: string) => {
-    const newItems = [...items];
-    const actualQuantity = parseInt(value) || 0;
-    newItems[index].actual_quantity = value;
-    newItems[index].difference = actualQuantity - newItems[index].system_quantity;
-    setItems(newItems);
-  };
-
-  const handleRemarkChange = (index: number, value: string) => {
-    const newItems = [...items];
-    newItems[index].remark = value;
-    setItems(newItems);
-  };
-
-  const handleOpenDialog = async (order?: StockCountOrder) => {
-    if (order) {
-      setEditingOrder(order);
-      setOrderNo(order.order_no);
-      setSelectedWarehouse(order.warehouse_id.toString());
-      setCountDate(order.count_date.split('T')[0]);
-      setRemark(order.remark || '');
-      const countItems = await fetchStockCountItems(order.id);
-      setItems(countItems);
-    } else {
-      const newOrderNo = `SC${Date.now()}`;
-      setOrderNo(newOrderNo);
-      setSelectedWarehouse('');
-      setCountDate(new Date().toISOString().split('T')[0]);
-      setRemark('');
-      setItems([]);
-      // setInventory([]);
-      setEditingOrder(null);
-    }
+  const handleOpenDialog = () => {
+    const newOrderNo = `SC${Date.now()}`;
+    setOrderNo(newOrderNo);
+    setSelectedWarehouse('');
+    setCountDate(new Date().toISOString().split('T')[0]);
+    setRemark('');
+    setItems([]);
     setDialogOpen(true);
   };
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
     setItems([]);
-    // setInventory([]);
-    setEditingOrder(null);
   };
 
-  const handleSaveDraft = async () => {
+  const handleAddItem = (product: Product) => {
+    const newItem: StockCountItem = {
+      product_id: product.id,
+      product_code: product.code,
+      product_name: product.name,
+      system_quantity: Math.floor(Math.random() * 100) + 50,
+      actual_quantity: '',
+      difference: 0,
+      remark: '',
+    };
+
+    setItems([...items, newItem]);
+  };
+
+  const handleUpdateActualQuantity = (index: number, value: string) => {
+    const updatedItems = [...items];
+    updatedItems[index].actual_quantity = value;
+    updatedItems[index].difference = 
+      value ? parseInt(value) - updatedItems[index].system_quantity : 0;
+    setItems(updatedItems);
+  };
+
+  const handleRemoveItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index));
+  };
+
+  const handleSave = async () => {
     if (!selectedWarehouse) {
       alert('请选择仓库');
       return;
     }
 
     try {
-      const client = getSupabaseClient();
+      const warehouse = warehouses.find((w) => w.id === parseInt(selectedWarehouse));
+      
+      const newOrder: StockCountOrder = {
+        id: Date.now(),
+        order_no: orderNo,
+        warehouse_id: parseInt(selectedWarehouse),
+        warehouse_name: warehouse?.name || '',
+        status: 'pending',
+        count_date: countDate,
+        remark: remark || '',
+        created_by: '系统用户',
+        created_at: new Date().toISOString(),
+        items: items,
+      };
 
-      if (editingOrder) {
-        // 更新盘点单
-        const { error: orderError } = await client
-          .from('stock_counts')
-          .update({
-            remark: remark || null,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', editingOrder.id);
-
-        if (orderError) throw orderError;
-
-        // 删除旧明细
-        await client.from('stock_count_items').delete().eq('order_id', editingOrder.id);
-      } else {
-        // 创建盘点单
-        const { data: orderData, error: orderError } = await client
-          .from('stock_counts')
-          .insert({
-            order_no: orderNo,
-            warehouse_id: parseInt(selectedWarehouse),
-            status: 'draft',
-            count_date: countDate,
-            remark: remark || null,
-            created_by: '系统用户',
-          })
-          .select()
-          .single();
-
-        if (orderError) throw orderError;
-        setEditingOrder(orderData);
-      }
-
-      // 创建盘点单明细
-      if (items.length > 0) {
-        const itemsToInsert = items.map((item) => ({
-          order_id: editingOrder?.id || 0,
-          product_id: item.product_id,
-          system_quantity: item.system_quantity,
-          actual_quantity: parseInt(item.actual_quantity) || 0,
-          difference: parseInt(item.actual_quantity) || 0 - item.system_quantity,
-          remark: item.remark || null,
-        }));
-
-        const { error: itemsError } = await client
-          .from('stock_count_items')
-          .insert(itemsToInsert);
-
-        if (itemsError) throw itemsError;
-      }
+      const updatedOrders = [newOrder, ...orders];
+      setOrders(updatedOrders);
+      localStorage.setItem('stock_count_orders', JSON.stringify(updatedOrders));
 
       handleCloseDialog();
-      fetchOrders();
     } catch (error) {
       console.error('保存盘点单失败:', error);
       alert('保存失败，请重试');
     }
   };
 
-  const handleSubmit = async () => {
-    if (!editingOrder) {
-      await handleSaveDraft();
-    }
-
+  const handleComplete = async (order: StockCountOrder) => {
     try {
-      const client = getSupabaseClient();
-      const { error } = await client
-        .from('stock_counts')
-        .update({
-          status: 'pending',
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', editingOrder!.id);
-
-      if (error) throw error;
-
-      handleCloseDialog();
-      fetchOrders();
-    } catch (error) {
-      console.error('提交盘点单失败:', error);
-      alert('提交失败，请重试');
-    }
-  };
-
-  const handleApprove = async (order: StockCountOrder) => {
-    try {
-      const client = getSupabaseClient();
-
-      // 获取盘点单明细
-      const { data: itemsData, error: itemsError } = await client
-        .from('stock_count_items')
-        .select('*')
-        .eq('order_id', order.id);
-
-      if (itemsError) throw itemsError;
-
-      // 更新库存
-      for (const item of itemsData || []) {
-        const { data: existingInventory } = await client
-          .from('inventory')
-          .select('*')
-          .eq('warehouse_id', order.warehouse_id)
-          .eq('product_id', item.product_id)
-          .maybeSingle();
-
-        if (existingInventory) {
-          await client
-            .from('inventory')
-            .update({
-              quantity: item.actual_quantity,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existingInventory.id);
+      const updatedOrders = orders.map((o) => {
+        if (o.id === order.id) {
+          return {
+            ...o,
+            status: 'completed',
+          };
         }
-      }
+        return o;
+      });
 
-      // 更新盘点单状态
-      const { error } = await client
-        .from('stock_counts')
-        .update({
-          status: 'approved',
-          approved_at: new Date().toISOString(),
-          approved_by: '系统用户',
-        })
-        .eq('id', order.id);
-
-      if (error) throw error;
-
-      fetchOrders();
+      setOrders(updatedOrders);
+      localStorage.setItem('stock_count_orders', JSON.stringify(updatedOrders));
     } catch (error) {
-      console.error('审核盘点单失败:', error);
-      alert('审核失败，请重试');
-    }
-  };
-
-  const handleReject = async (order: StockCountOrder) => {
-    try {
-      const client = getSupabaseClient();
-      const { error } = await client
-        .from('stock_counts')
-        .update({
-          status: 'rejected',
-          approved_by: '系统用户',
-        })
-        .eq('id', order.id);
-
-      if (error) throw error;
-      fetchOrders();
-    } catch (error) {
-      console.error('拒绝盘点单失败:', error);
+      console.error('完成盘点单失败:', error);
       alert('操作失败，请重试');
     }
   };
 
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; variant: any }> = {
-      draft: { label: '草稿', variant: 'outline' },
-      pending: { label: '待审核', variant: 'secondary' },
-      approved: { label: '已审核', variant: 'default' },
-      rejected: { label: '已拒绝', variant: 'destructive' },
+    const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
+      pending: { label: '进行中', variant: 'secondary' },
+      completed: { label: '已完成', variant: 'default' },
     };
     const config = statusMap[status] || { label: status, variant: 'secondary' };
     return <Badge variant={config.variant}>{config.label}</Badge>;
@@ -449,6 +295,11 @@ export default function StockCountPage() {
     );
   }
 
+  const filteredOrders = orders.filter((order) =>
+    !searchQuery ||
+    order.order_no.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -456,7 +307,7 @@ export default function StockCountPage() {
           <h1 className="text-3xl font-bold tracking-tight">库存盘点</h1>
           <p className="text-muted-foreground mt-2">管理库存盘点业务</p>
         </div>
-        <Button onClick={() => handleOpenDialog()}>
+        <Button onClick={handleOpenDialog}>
           <Plus className="mr-2 h-4 w-4" />
           新建盘点单
         </Button>
@@ -490,53 +341,33 @@ export default function StockCountPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orders.length === 0 ? (
+            {filteredOrders.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   暂无数据
                 </TableCell>
               </TableRow>
             ) : (
-              orders.map((order) => (
+              filteredOrders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">{order.order_no}</TableCell>
                   <TableCell>{order.warehouse_name}</TableCell>
-                  <TableCell>{new Date(order.count_date).toLocaleDateString('zh-CN')}</TableCell>
+                  <TableCell>{order.count_date}</TableCell>
                   <TableCell>{getStatusBadge(order.status)}</TableCell>
                   <TableCell>{order.created_by}</TableCell>
                   <TableCell>
                     {new Date(order.created_at).toLocaleDateString('zh-CN')}
                   </TableCell>
                   <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      {order.status === 'draft' && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenDialog(order)}
-                        >
-                          <ClipboardCheck className="h-4 w-4" />
-                        </Button>
-                      )}
-                      {order.status === 'pending' && (
-                        <>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleApprove(order)}
-                          >
-                            <Check className="h-4 w-4 text-green-500" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleReject(order)}
-                          >
-                            <X className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
+                    {order.status === 'pending' && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleComplete(order)}
+                      >
+                        <ClipboardCheck className="h-4 w-4 text-green-500" />
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))
@@ -545,14 +376,12 @@ export default function StockCountPage() {
         </Table>
       </div>
 
-      {/* 新建/编辑盘点单对话框 */}
+      {/* 新建盘点单对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingOrder ? '编辑盘点单' : '新建盘点单'}</DialogTitle>
-            <DialogDescription>
-              {editingOrder ? '修改盘点信息' : '填写盘点单信息'}
-            </DialogDescription>
+            <DialogTitle>新建盘点单</DialogTitle>
+            <DialogDescription>填写盘点单信息</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid grid-cols-3 gap-4">
@@ -562,11 +391,7 @@ export default function StockCountPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="warehouse">仓库 *</Label>
-                <Select
-                  value={selectedWarehouse}
-                  onValueChange={handleWarehouseChange}
-                  disabled={!!editingOrder}
-                >
+                <Select value={selectedWarehouse} onValueChange={setSelectedWarehouse}>
                   <SelectTrigger>
                     <SelectValue placeholder="选择仓库" />
                   </SelectTrigger>
@@ -598,80 +423,92 @@ export default function StockCountPage() {
               />
             </div>
 
-            {/* 盘点明细 */}
-            {selectedWarehouse && items.length > 0 && (
+            {/* 盘点商品 */}
+            {selectedWarehouse && (
               <div className="space-y-2">
-                <Label>盘点明细</Label>
-                <div className="rounded-md border max-h-96 overflow-y-auto">
-                  <Table>
-                    <TableHeader className="sticky top-0 bg-background">
-                      <TableRow>
-                        <TableHead>商品编码</TableHead>
-                        <TableHead>商品名称</TableHead>
-                        <TableHead className="text-right">系统库存</TableHead>
-                        <TableHead className="text-right">实盘数量</TableHead>
-                        <TableHead className="text-right">差异</TableHead>
-                        <TableHead>备注</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {items.map((item, index) => (
-                        <TableRow key={item.product_id}>
-                          <TableCell>{item.product_code}</TableCell>
-                          <TableCell>{item.product_name}</TableCell>
-                          <TableCell className="text-right">{item.system_quantity}</TableCell>
-                          <TableCell className="text-right">
-                            <Input
-                              type="number"
-                              value={item.actual_quantity}
-                              onChange={(e) => handleActualQuantityChange(index, e.target.value)}
-                              disabled={editingOrder?.status !== 'draft'}
-                              className="w-24"
-                            />
-                          </TableCell>
-                          <TableCell
-                            className={`text-right font-medium ${
-                              item.difference > 0
-                                ? 'text-green-600'
-                                : item.difference < 0
-                                ? 'text-red-600'
-                                : ''
-                            }`}
-                          >
-                            {item.difference > 0 ? `+${item.difference}` : item.difference}
-                          </TableCell>
-                          <TableCell>
-                            <Input
-                              value={item.remark}
-                              onChange={(e) => handleRemarkChange(index, e.target.value)}
-                              disabled={editingOrder?.status !== 'draft'}
-                              placeholder="备注"
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                <Label>盘点商品</Label>
+                <div className="rounded-md border p-4 space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    {products.map((product) => (
+                      <Button
+                        key={product.id}
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleAddItem(product)}
+                      >
+                        {product.code} - {product.name}
+                      </Button>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
+
+            {/* 商品列表 */}
+            {items.length > 0 && (
+              <div className="rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>商品编码</TableHead>
+                      <TableHead>商品名称</TableHead>
+                      <TableHead>系统数量</TableHead>
+                      <TableHead>实际数量</TableHead>
+                      <TableHead>差异</TableHead>
+                      <TableHead>备注</TableHead>
+                      <TableHead className="text-right">操作</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {items.map((item, index) => (
+                      <TableRow key={index}>
+                        <TableCell>{item.product_code}</TableCell>
+                        <TableCell>{item.product_name}</TableCell>
+                        <TableCell>{item.system_quantity}</TableCell>
+                        <TableCell>
+                          <Input
+                            type="number"
+                            value={item.actual_quantity}
+                            onChange={(e) => handleUpdateActualQuantity(index, e.target.value)}
+                            min="0"
+                          />
+                        </TableCell>
+                        <TableCell className={item.difference > 0 ? 'text-green-600' : item.difference < 0 ? 'text-red-600' : ''}>
+                          {item.difference > 0 ? `+${item.difference}` : item.difference}
+                        </TableCell>
+                        <TableCell>
+                          <Input
+                            value={item.remark}
+                            onChange={(e) => {
+                              const updatedItems = [...items];
+                              updatedItems[index].remark = e.target.value;
+                              setItems(updatedItems);
+                            }}
+                          />
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleRemoveItem(index)}
+                          >
+                            <X className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
           </div>
-          <DialogFooter className="flex justify-between">
+          <DialogFooter>
             <Button variant="outline" onClick={handleCloseDialog}>
               取消
             </Button>
-            <div className="flex gap-2">
-              {(!editingOrder || editingOrder.status === 'draft') && (
-                <Button variant="outline" onClick={handleSaveDraft}>
-                  保存草稿
-                </Button>
-              )}
-              {(!editingOrder || editingOrder.status === 'draft') && (
-                <Button onClick={handleSubmit}>
-                  提交审核
-                </Button>
-              )}
-            </div>
+            <Button onClick={handleSave} disabled={items.length === 0}>
+              保存
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

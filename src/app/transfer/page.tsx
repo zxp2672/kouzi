@@ -30,7 +30,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
 
 interface Warehouse {
   id: number;
@@ -43,14 +42,6 @@ interface Product {
   code: string;
   name: string;
   unit: string;
-}
-
-interface InventoryItem {
-  product_id: number;
-  product_code: string;
-  product_name: string;
-  quantity: number;
-  available_quantity: number;
 }
 
 interface TransferItem {
@@ -72,13 +63,63 @@ interface TransferOrder {
   remark: string;
   created_by: string;
   created_at: string;
+  items?: TransferItem[];
+  approved_at?: string;
+  approved_by?: string;
 }
+
+// Mock数据
+const mockWarehouses: Warehouse[] = [
+  { id: 1, code: 'WH001', name: '主仓库' },
+  { id: 2, code: 'WH002', name: '分仓库' },
+];
+
+const mockProducts: Product[] = [
+  { id: 1, code: 'PRD001', name: '对讲机', unit: '台' },
+  { id: 2, code: 'PRD002', name: '警棍', unit: '根' },
+  { id: 3, code: 'PRD003', name: '防刺服', unit: '件' },
+];
+
+const mockTransferOrders: TransferOrder[] = [
+  {
+    id: 1,
+    order_no: 'TR202401001',
+    from_warehouse_id: 1,
+    from_warehouse_name: '主仓库',
+    to_warehouse_id: 2,
+    to_warehouse_name: '分仓库',
+    status: 'approved',
+    remark: '调拨物资',
+    created_by: '张三',
+    created_at: '2024-01-14T09:00:00Z',
+    approved_at: '2024-01-14T10:30:00Z',
+    approved_by: '李四',
+    items: [
+      { product_id: 1, product_code: 'PRD001', product_name: '对讲机', quantity: 10, remark: '' },
+      { product_id: 2, product_code: 'PRD002', product_name: '警棍', quantity: 20, remark: '' },
+    ],
+  },
+  {
+    id: 2,
+    order_no: 'TR202401002',
+    from_warehouse_id: 2,
+    from_warehouse_name: '分仓库',
+    to_warehouse_id: 1,
+    to_warehouse_name: '主仓库',
+    status: 'pending',
+    remark: '退回物资',
+    created_by: '王五',
+    created_at: '2024-01-16T14:20:00Z',
+    items: [
+      { product_id: 3, product_code: 'PRD003', product_name: '防刺服', quantity: 5, remark: '' },
+    ],
+  },
+];
 
 export default function TransferPage() {
   const [orders, setOrders] = useState<TransferOrder[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -99,40 +140,16 @@ export default function TransferPage() {
 
   const fetchOrders = async () => {
     try {
-      const client = getSupabaseClient();
-      let query = client
-        .from('transfer_orders')
-        .select('*, from_warehouse:warehouses!transfer_orders_from_warehouse_id_fkey(*), to_warehouse:warehouses!transfer_orders_to_warehouse_id_fkey(*)')
-        .order('created_at', { ascending: false });
-
-      if (searchQuery) {
-        query = query.or(`order_no.ilike.%${searchQuery}%`);
+      const savedOrders = localStorage.getItem('transfer_orders');
+      if (savedOrders) {
+        setOrders(JSON.parse(savedOrders));
+      } else {
+        setOrders(mockTransferOrders);
+        localStorage.setItem('transfer_orders', JSON.stringify(mockTransferOrders));
       }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      setOrders(
-        data?.map((order: {
-          id: number;
-          order_no: string;
-          from_warehouse_id: number;
-          to_warehouse_id: number;
-          from_warehouse?: { name: string };
-          to_warehouse?: { name: string };
-          status: string;
-          remark: string;
-          created_by: string;
-          created_at: string;
-        }) => ({
-          ...order,
-          from_warehouse_name: order.from_warehouse?.name || '',
-          to_warehouse_name: order.to_warehouse?.name || '',
-        })) || []
-      );
     } catch (error) {
       console.error('获取调拨单列表失败:', error);
+      setOrders(mockTransferOrders);
     } finally {
       setLoading(false);
     }
@@ -140,56 +157,31 @@ export default function TransferPage() {
 
   const fetchWarehouses = async () => {
     try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('warehouses')
-        .select('*')
-        .eq('is_active', true);
-
-      if (error) throw error;
-      setWarehouses(data || []);
+      const savedWarehouses = localStorage.getItem('warehouses');
+      if (savedWarehouses) {
+        setWarehouses(JSON.parse(savedWarehouses));
+      } else {
+        setWarehouses(mockWarehouses);
+        localStorage.setItem('warehouses', JSON.stringify(mockWarehouses));
+      }
     } catch (error) {
       console.error('获取仓库列表失败:', error);
+      setWarehouses(mockWarehouses);
     }
   };
 
   const fetchProducts = async () => {
     try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
-        .order('code');
-
-      if (error) throw error;
-      setProducts(data || []);
+      const savedProducts = localStorage.getItem('products');
+      if (savedProducts) {
+        setProducts(JSON.parse(savedProducts));
+      } else {
+        setProducts(mockProducts);
+        localStorage.setItem('products', JSON.stringify(mockProducts));
+      }
     } catch (error) {
       console.error('获取商品列表失败:', error);
-    }
-  };
-
-  const fetchInventory = async (warehouseId: string) => {
-    try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('inventory')
-        .select('*, products(*)')
-        .eq('warehouse_id', parseInt(warehouseId));
-
-      if (error) throw error;
-
-      setInventory(
-        data?.map((item: any) => ({
-          product_id: item.product_id,
-          product_code: item.products?.code || '',
-          product_name: item.products?.name || '',
-          quantity: item.quantity || 0,
-          available_quantity: (item.quantity || 0) - (item.locked_quantity || 0),
-        })) || []
-      );
-    } catch (error) {
-      console.error('获取库存信息失败:', error);
+      setProducts(mockProducts);
     }
   };
 
@@ -200,14 +192,6 @@ export default function TransferPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const handleFromWarehouseChange = (value: string) => {
-    setFromWarehouse(value);
-    setItems([]);
-    if (value) {
-      fetchInventory(value);
-    }
-  };
-
   const handleOpenDialog = () => {
     const newOrderNo = `TR${Date.now()}`;
     setOrderNo(newOrderNo);
@@ -215,31 +199,17 @@ export default function TransferPage() {
     setToWarehouse('');
     setRemark('');
     setItems([]);
-    setInventory([]);
     setDialogOpen(true);
   };
 
   const handleCloseDialog = () => {
     setDialogOpen(false);
     setItems([]);
-    setInventory([]);
   };
 
   const handleAddItem = () => {
     if (!selectedProduct || !itemQuantity) {
       alert('请选择商品并输入数量');
-      return;
-    }
-
-    const inventoryItem = inventory.find((i) => i.product_id === parseInt(selectedProduct));
-    if (!inventoryItem) {
-      alert('该商品在当前仓库无库存');
-      return;
-    }
-
-    const quantity = parseInt(itemQuantity);
-    if (quantity > inventoryItem.available_quantity) {
-      alert(`库存不足，可用库存: ${inventoryItem.available_quantity}`);
       return;
     }
 
@@ -250,7 +220,7 @@ export default function TransferPage() {
       product_id: product.id,
       product_code: product.code,
       product_name: product.name,
-      quantity,
+      quantity: parseInt(itemQuantity),
       remark: itemRemark,
     };
 
@@ -266,50 +236,38 @@ export default function TransferPage() {
 
   const handleSave = async () => {
     if (!fromWarehouse || !toWarehouse || items.length === 0) {
-      alert('请选择调出仓库、调入仓库并添加调拨商品');
+      alert('请选择调出/调入仓库并添加商品');
       return;
     }
 
     if (fromWarehouse === toWarehouse) {
-      alert('调出仓库和调入仓库不能相同');
+      alert('调出和调入仓库不能相同');
       return;
     }
 
     try {
-      const client = getSupabaseClient();
+      const fromWh = warehouses.find((w) => w.id === parseInt(fromWarehouse));
+      const toWh = warehouses.find((w) => w.id === parseInt(toWarehouse));
+      
+      const newOrder: TransferOrder = {
+        id: Date.now(),
+        order_no: orderNo,
+        from_warehouse_id: parseInt(fromWarehouse),
+        from_warehouse_name: fromWh?.name || '',
+        to_warehouse_id: parseInt(toWarehouse),
+        to_warehouse_name: toWh?.name || '',
+        status: 'pending',
+        remark: remark || '',
+        created_by: '系统用户',
+        created_at: new Date().toISOString(),
+        items: items,
+      };
 
-      // 创建调拨单
-      const { data: orderData, error: orderError } = await client
-        .from('transfer_orders')
-        .insert({
-          order_no: orderNo,
-          from_warehouse_id: parseInt(fromWarehouse),
-          to_warehouse_id: parseInt(toWarehouse),
-          status: 'pending',
-          remark: remark || null,
-          created_by: '系统用户',
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // 创建调拨单明细
-      const itemsToInsert = items.map((item) => ({
-        order_id: orderData.id,
-        product_id: item.product_id,
-        quantity: item.quantity,
-        remark: item.remark || null,
-      }));
-
-      const { error: itemsError } = await client
-        .from('transfer_items')
-        .insert(itemsToInsert);
-
-      if (itemsError) throw itemsError;
+      const updatedOrders = [newOrder, ...orders];
+      setOrders(updatedOrders);
+      localStorage.setItem('transfer_orders', JSON.stringify(updatedOrders));
 
       handleCloseDialog();
-      fetchOrders();
     } catch (error) {
       console.error('保存调拨单失败:', error);
       alert('保存失败，请重试');
@@ -318,90 +276,20 @@ export default function TransferPage() {
 
   const handleApprove = async (order: TransferOrder) => {
     try {
-      const client = getSupabaseClient();
-
-      // 获取调拨单明细
-      const { data: itemsData, error: itemsError } = await client
-        .from('transfer_items')
-        .select('*')
-        .eq('order_id', order.id);
-
-      if (itemsError) throw itemsError;
-
-      // 检查调出仓库库存
-      for (const item of itemsData || []) {
-        const { data: fromInventory } = await client
-          .from('inventory')
-          .select('*')
-          .eq('warehouse_id', order.from_warehouse_id)
-          .eq('product_id', item.product_id)
-          .maybeSingle();
-
-        if (!fromInventory || fromInventory.quantity < item.quantity) {
-          throw new Error('库存不足');
+      const updatedOrders = orders.map((o) => {
+        if (o.id === order.id) {
+          return {
+            ...o,
+            status: 'approved',
+            approved_at: new Date().toISOString(),
+            approved_by: '系统用户',
+          };
         }
-      }
+        return o;
+      });
 
-      // 更新库存
-      for (const item of itemsData || []) {
-        // 减少调出仓库库存
-        const { data: fromInventory } = await client
-          .from('inventory')
-          .select('*')
-          .eq('warehouse_id', order.from_warehouse_id)
-          .eq('product_id', item.product_id)
-          .maybeSingle();
-
-        if (fromInventory) {
-          await client
-            .from('inventory')
-            .update({
-              quantity: fromInventory.quantity - item.quantity,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', fromInventory.id);
-        }
-
-        // 增加调入仓库库存
-        const { data: toInventory } = await client
-          .from('inventory')
-          .select('*')
-          .eq('warehouse_id', order.to_warehouse_id)
-          .eq('product_id', item.product_id)
-          .maybeSingle();
-
-        if (toInventory) {
-          await client
-            .from('inventory')
-            .update({
-              quantity: toInventory.quantity + item.quantity,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', toInventory.id);
-        } else {
-          await client.from('inventory').insert({
-            warehouse_id: order.to_warehouse_id,
-            product_id: item.product_id,
-            quantity: item.quantity,
-          });
-        }
-      }
-
-      // 更新调拨单状态
-      const { error } = await client
-        .from('transfer_orders')
-        .update({
-          status: 'completed',
-          approved_at: new Date().toISOString(),
-          approved_by: '系统用户',
-          completed_at: new Date().toISOString(),
-          completed_by: '系统用户',
-        })
-        .eq('id', order.id);
-
-      if (error) throw error;
-
-      fetchOrders();
+      setOrders(updatedOrders);
+      localStorage.setItem('transfer_orders', JSON.stringify(updatedOrders));
     } catch (error) {
       console.error('审核调拨单失败:', error);
       alert('审核失败，请重试');
@@ -410,17 +298,19 @@ export default function TransferPage() {
 
   const handleReject = async (order: TransferOrder) => {
     try {
-      const client = getSupabaseClient();
-      const { error } = await client
-        .from('transfer_orders')
-        .update({
-          status: 'rejected',
-          approved_by: '系统用户',
-        })
-        .eq('id', order.id);
+      const updatedOrders = orders.map((o) => {
+        if (o.id === order.id) {
+          return {
+            ...o,
+            status: 'rejected',
+            approved_by: '系统用户',
+          };
+        }
+        return o;
+      });
 
-      if (error) throw error;
-      fetchOrders();
+      setOrders(updatedOrders);
+      localStorage.setItem('transfer_orders', JSON.stringify(updatedOrders));
     } catch (error) {
       console.error('拒绝调拨单失败:', error);
       alert('操作失败，请重试');
@@ -428,11 +318,10 @@ export default function TransferPage() {
   };
 
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; variant: any }> = {
+    const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
       pending: { label: '待审核', variant: 'secondary' },
       approved: { label: '已审核', variant: 'default' },
       rejected: { label: '已拒绝', variant: 'destructive' },
-      completed: { label: '已完成', variant: 'default' },
     };
     const config = statusMap[status] || { label: status, variant: 'secondary' };
     return <Badge variant={config.variant}>{config.label}</Badge>;
@@ -446,12 +335,17 @@ export default function TransferPage() {
     );
   }
 
+  const filteredOrders = orders.filter((order) =>
+    !searchQuery ||
+    order.order_no.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">库存调拨</h1>
-          <p className="text-muted-foreground mt-2">管理商品调拨业务</p>
+          <h1 className="text-3xl font-bold tracking-tight">商品调拨</h1>
+          <p className="text-muted-foreground mt-2">管理仓库间商品调拨</p>
         </div>
         <Button onClick={handleOpenDialog}>
           <Plus className="mr-2 h-4 w-4" />
@@ -487,14 +381,14 @@ export default function TransferPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orders.length === 0 ? (
+            {filteredOrders.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
                   暂无数据
                 </TableCell>
               </TableRow>
             ) : (
-              orders.map((order) => (
+              filteredOrders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">{order.order_no}</TableCell>
                   <TableCell>{order.from_warehouse_name}</TableCell>
@@ -533,7 +427,7 @@ export default function TransferPage() {
 
       {/* 新建调拨单对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>新建调拨单</DialogTitle>
             <DialogDescription>填写调拨单信息</DialogDescription>
@@ -546,9 +440,9 @@ export default function TransferPage() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="fromWarehouse">调出仓库 *</Label>
-                <Select value={fromWarehouse} onValueChange={handleFromWarehouseChange}>
+                <Select value={fromWarehouse} onValueChange={setFromWarehouse}>
                   <SelectTrigger>
-                    <SelectValue placeholder="选择调出仓库" />
+                    <SelectValue placeholder="选择仓库" />
                   </SelectTrigger>
                   <SelectContent>
                     {warehouses.map((wh) => (
@@ -563,16 +457,14 @@ export default function TransferPage() {
                 <Label htmlFor="toWarehouse">调入仓库 *</Label>
                 <Select value={toWarehouse} onValueChange={setToWarehouse}>
                   <SelectTrigger>
-                    <SelectValue placeholder="选择调入仓库" />
+                    <SelectValue placeholder="选择仓库" />
                   </SelectTrigger>
                   <SelectContent>
-                    {warehouses
-                      .filter((wh) => wh.id.toString() !== fromWarehouse)
-                      .map((wh) => (
-                        <SelectItem key={wh.id} value={wh.id.toString()}>
-                          {wh.code} - {wh.name}
-                        </SelectItem>
-                      ))}
+                    {warehouses.map((wh) => (
+                      <SelectItem key={wh.id} value={wh.id.toString()}>
+                        {wh.code} - {wh.name}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -587,7 +479,7 @@ export default function TransferPage() {
             </div>
 
             {/* 调拨商品 */}
-            {fromWarehouse && (
+            {fromWarehouse && toWarehouse && (
               <div className="space-y-2">
                 <Label>调拨商品</Label>
                 <div className="rounded-md border p-4 space-y-4">
@@ -599,9 +491,9 @@ export default function TransferPage() {
                           <SelectValue placeholder="选择商品" />
                         </SelectTrigger>
                         <SelectContent>
-                          {inventory.map((item) => (
-                            <SelectItem key={item.product_id} value={item.product_id.toString()}>
-                              {item.product_code} - {item.product_name} (可用: {item.available_quantity})
+                          {products.map((product) => (
+                            <SelectItem key={product.id} value={product.id.toString()}>
+                              {product.code} - {product.name}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -621,7 +513,6 @@ export default function TransferPage() {
                       <Input
                         value={itemRemark}
                         onChange={(e) => setItemRemark(e.target.value)}
-                        placeholder="备注"
                       />
                     </div>
                   </div>
@@ -673,7 +564,7 @@ export default function TransferPage() {
             <Button variant="outline" onClick={handleCloseDialog}>
               取消
             </Button>
-            <Button onClick={handleSave} disabled={items.length === 0 || !toWarehouse}>
+            <Button onClick={handleSave} disabled={items.length === 0}>
               保存并提交审核
             </Button>
           </DialogFooter>
