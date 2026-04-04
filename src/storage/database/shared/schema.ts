@@ -453,3 +453,19 @@ export const warehouseOrganizations = pgTable(
     index("warehouse_organizations_organization_id_idx").on(table.organization_id),
   ]
 );
+
+// 系统配置表
+export const systemConfigs = pgTable(
+  "system_configs",
+  {
+    id: serial().primaryKey(),
+    config_key: varchar("config_key", { length: 100 }).notNull().unique(),
+    config_value: text("config_value"),
+    config_type: varchar("config_type", { length: 20 }).notNull().default("string"), // string, number, boolean, image
+    description: varchar("description", { length: 255 }),
+    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("system_configs_config_key_idx").on(table.config_key),
+  ]
+);
