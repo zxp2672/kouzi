@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import {
   LayoutDashboard,
   Package,
@@ -13,12 +13,22 @@ import {
   Settings,
   Menu,
   X,
-  Home
+  Home,
+  LogOut,
+  User as UserIcon
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ApprovalTodoBadge from '@/components/approval-todo-badge';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 const navigation = [
   { name: '库存看板', href: '/', icon: LayoutDashboard },
@@ -43,8 +53,47 @@ const DEFAULT_CONFIG = {
 
 export default function WarehouseLayout({ children }: LayoutProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [username, setUsername] = useState('');
   const config = DEFAULT_CONFIG;
+
+  useEffect(() => {
+    // 检查登录状态
+    const loggedIn = localStorage.getItem('isLoggedIn') === 'true';
+    const user = localStorage.getItem('username') || '';
+    setIsLoggedIn(loggedIn);
+    setUsername(user);
+
+    // 如果未登录且不在登录页，跳转到登录页
+    if (!loggedIn && pathname !== '/login') {
+      router.push('/login');
+    }
+
+    // 如果已登录且在登录页，跳转到首页
+    if (loggedIn && pathname === '/login') {
+      router.push('/');
+    }
+  }, [pathname, router]);
+
+  const handleLogout = () => {
+    localStorage.removeItem('isLoggedIn');
+    localStorage.removeItem('username');
+    setIsLoggedIn(false);
+    setUsername('');
+    router.push('/login');
+  };
+
+  // 如果未登录且不在登录页，不渲染内容（避免闪烁）
+  if (!isLoggedIn && pathname !== '/login') {
+    return null;
+  }
+
+  // 如果在登录页，直接返回子内容（登录页面有自己的布局）
+  if (pathname === '/login') {
+    return <>{children}</>;
+  }
 
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
@@ -171,6 +220,34 @@ export default function WarehouseLayout({ children }: LayoutProps) {
           
           <div className="flex items-center gap-4">
             <ApprovalTodoBadge />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="sm" className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
+                    <UserIcon className="h-4 w-4 text-blue-600" />
+                  </div>
+                  <span className="hidden sm:inline text-sm font-medium">
+                    {username || '用户'}
+                  </span>
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>用户信息</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-sm text-gray-600">
+                  <UserIcon className="h-4 w-4 mr-2" />
+                  {username || '用户'}
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={handleLogout}
+                  className="text-red-600 cursor-pointer"
+                >
+                  <LogOut className="h-4 w-4 mr-2" />
+                  退出登录
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <span className="text-sm text-gray-500 dark:text-gray-400">
               v1.0
             </span>
