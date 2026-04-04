@@ -141,9 +141,9 @@ export default function OrganizationsPage() {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-      const parsed = JSON.parse(saved);
-      return parsed.organizations || DEFAULT_ORGANIZATIONS;
-    }
+        const parsed = JSON.parse(saved);
+        return parsed.organizations || DEFAULT_ORGANIZATIONS;
+      }
     } catch (error) {
       console.error('读取组织机构数据失败:', error);
     }
@@ -256,12 +256,13 @@ export default function OrganizationsPage() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return parsed.organizations || [];
+        return parsed.organizations || DEFAULT_ORGANIZATIONS;
       } catch (error) {
-        return [];
+        console.error('读取组织数据失败:', error);
+        return DEFAULT_ORGANIZATIONS;
       }
     }
-    return [];
+    return DEFAULT_ORGANIZATIONS;
   };
 
   const getOrganizationById = (id: number): Organization | null => {
