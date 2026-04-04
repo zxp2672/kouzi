@@ -22,7 +22,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -42,7 +41,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { toast } from 'sonner';
 
 interface Organization {
   id: number;
@@ -74,6 +73,51 @@ const ORGANIZATION_TYPES = [
   { value: 'team', label: '所队', level: 3 },
 ];
 
+// 默认示例数据
+const DEFAULT_ORGANIZATIONS: Organization[] = [
+  {
+    id: 1,
+    code: 'GAJ001',
+    name: 'XX市公安局',
+    type: 'bureau',
+    level: 1,
+    parent_id: null,
+    path: null,
+    sort_order: 1,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: null,
+  },
+  {
+    id: 2,
+    code: 'GAC001',
+    name: 'XX区公安处',
+    type: 'department',
+    level: 2,
+    parent_id: 1,
+    path: '1',
+    sort_order: 1,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: null,
+  },
+  {
+    id: 3,
+    code: 'SD001',
+    name: 'XX派出所',
+    type: 'team',
+    level: 3,
+    parent_id: 2,
+    path: '1.2',
+    sort_order: 1,
+    is_active: true,
+    created_at: new Date().toISOString(),
+    updated_at: null,
+  },
+];
+
+const STORAGE_KEY = 'organizations';
+
 export default function OrganizationsPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
@@ -83,6 +127,7 @@ export default function OrganizationsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingOrg, setDeletingOrg] = useState<Organization | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
+  const [nextId, setNextId] = useState(4);
   const [form, setForm] = useState<OrganizationForm>({
     code: '',
     name: '',
@@ -92,24 +137,54 @@ export default function OrganizationsPage() {
     is_active: true,
   });
 
+  const getOrganizationsFromStorage = (): Organization[] => {
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.organizations || DEFAULT_ORGANIZATIONS;
+    }
+    } catch (error) {
+      console.error('读取组织机构数据失败:', error);
+    }
+    return DEFAULT_ORGANIZATIONS;
+  };
+
+  const saveOrganizationsToStorage = (orgs: Organization[], newNextId?: number) => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        organizations: orgs,
+        nextId: newNextId || nextId
+      }));
+    } catch (error) {
+      console.error('保存组织机构数据失败:', error);
+    }
+  };
+
   const fetchOrganizations = async () => {
     try {
       setLoading(true);
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('organizations')
-        .select('*')
-        .order('level', { ascending: true })
-        .order('sort_order', { ascending: true });
-
-      if (error) throw error;
+      
+      // 从 localStorage 读取数据
+      const savedData = getOrganizationsFromStorage();
+      const savedNextId = localStorage.getItem(STORAGE_KEY);
+      if (savedNextId) {
+        try {
+          const parsed = JSON.parse(savedNextId);
+          if (parsed.nextId) {
+            setNextId(parsed.nextId);
+          }
+        } catch (e) {
+          // 忽略
+        }
+      }
       
       // 构建树形结构
-      const tree = buildOrganizationTree(data || []);
+      const tree = buildOrganizationTree(savedData || []);
       setOrganizations(tree);
       
       // 默认展开顶级节点
-      const topLevelIds = (data || [])
+      const topLevelIds = (savedData || [])
         .filter(org => org.parent_id === null)
         .map(org => org.id);
       setExpandedNodes(new Set(topLevelIds));
@@ -176,72 +251,93 @@ export default function OrganizationsPage() {
     setDialogOpen(true);
   };
 
+  const getFlatOrganizations = (): Organization[] => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return parsed.organizations || [];
+      } catch (error) {
+        return [];
+      }
+    }
+    return [];
+  };
+
+  const getOrganizationById = (id: number): Organization | null => {
+    const flatList = getFlatOrganizations();
+    return flatList.find(org => org.id === id) || null;
+  };
+
   const handleSave = async () => {
     try {
       if (!form.code || !form.name || !form.type) {
-        alert('请填写必填字段');
+        toast.error('请填写必填字段');
         return;
       }
 
-      const client = getSupabaseClient();
-      
       const selectedType = ORGANIZATION_TYPES.find(t => t.value === form.type);
       const level = selectedType?.level || 1;
       
       // 计算路径
       let path = null;
       if (form.parent_id) {
-        const parentOrg = await getOrganizationById(parseInt(form.parent_id));
+        const parentOrg = getOrganizationById(parseInt(form.parent_id));
         if (parentOrg) {
           path = parentOrg.path ? `${parentOrg.path}.${form.parent_id}` : form.parent_id;
         }
       }
 
-      const orgData = {
-        code: form.code,
-        name: form.name,
-        type: form.type,
-        level: level,
-        parent_id: form.parent_id ? parseInt(form.parent_id) : null,
-        path: path,
-        sort_order: parseInt(form.sort_order) || 0,
-        is_active: form.is_active,
-      };
-
+      const flatList = getFlatOrganizations();
+      
       if (editingOrg) {
-        const { error } = await client
-          .from('organizations')
-          .update({ ...orgData, updated_at: new Date().toISOString() })
-          .eq('id', editingOrg.id);
-        if (error) throw error;
+        // 编辑现有组织
+        const updatedList = flatList.map(org => {
+          if (org.id === editingOrg.id) {
+            return {
+              ...org,
+              code: form.code,
+              name: form.name,
+              type: form.type,
+              level: level,
+              parent_id: form.parent_id ? parseInt(form.parent_id) : null,
+              path: path,
+              sort_order: parseInt(form.sort_order) || 0,
+              is_active: form.is_active,
+              updated_at: new Date().toISOString(),
+            };
+          }
+          return org;
+        });
+        
+        saveOrganizationsToStorage(updatedList);
       } else {
-        const { error } = await client
-          .from('organizations')
-          .insert(orgData);
-        if (error) throw error;
+        // 新增组织
+        const newOrg: Organization = {
+          id: nextId,
+          code: form.code,
+          name: form.name,
+          type: form.type,
+          level: level,
+          parent_id: form.parent_id ? parseInt(form.parent_id) : null,
+          path: path,
+          sort_order: parseInt(form.sort_order) || 0,
+          is_active: form.is_active,
+          created_at: new Date().toISOString(),
+          updated_at: null,
+        };
+        
+        const updatedList = [...flatList, newOrg];
+        saveOrganizationsToStorage(updatedList, nextId + 1);
+        setNextId(nextId + 1);
       }
 
       setDialogOpen(false);
+      toast.success(editingOrg ? '组织已更新' : '组织已创建');
       fetchOrganizations();
     } catch (error) {
       console.error('保存组织失败:', error);
-      alert('保存失败，请重试');
-    }
-  };
-
-  const getOrganizationById = async (id: number): Promise<Organization | null> => {
-    try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('organizations')
-        .select('*')
-        .eq('id', id)
-        .single();
-      if (error) throw error;
-      return data;
-    } catch (error) {
-      console.error('获取组织信息失败:', error);
-      return null;
+      toast.error('保存失败，请重试');
     }
   };
 
@@ -249,19 +345,30 @@ export default function OrganizationsPage() {
     if (!deletingOrg) return;
 
     try {
-      const client = getSupabaseClient();
-      const { error } = await client
-        .from('organizations')
-        .delete()
-        .eq('id', deletingOrg.id);
-      if (error) throw error;
+      const flatList = getFlatOrganizations();
+      
+      // 递归获取所有要删除的组织ID
+      const getIdsToDelete = (orgId: number): number[] => {
+        const result: number[] = [orgId];
+        const children = flatList.filter(org => org.parent_id === orgId);
+        children.forEach(child => {
+          result.push(...getIdsToDelete(child.id));
+        });
+        return result;
+      };
+      
+      const idsToDelete = getIdsToDelete(deletingOrg.id);
+      const updatedList = flatList.filter(org => !idsToDelete.includes(org.id));
+      
+      saveOrganizationsToStorage(updatedList);
 
       setDeleteDialogOpen(false);
       setDeletingOrg(null);
+      toast.success('组织已删除');
       fetchOrganizations();
     } catch (error) {
       console.error('删除组织失败:', error);
-      alert('删除失败，请重试');
+      toast.error('删除失败，请重试');
     }
   };
 
@@ -300,9 +407,9 @@ export default function OrganizationsPage() {
 
   const getLevelColor = (level: number) => {
     switch (level) {
-      case 1: return 'bg-red-100 text-red-800';
-      case 2: return 'bg-blue-100 text-blue-800';
-      case 3: return 'bg-green-100 text-green-800';
+      case 1: return 'bg-blue-100 text-blue-800';
+      case 2: return 'bg-sky-100 text-sky-800';
+      case 3: return 'bg-cyan-100 text-cyan-800';
       default: return 'bg-gray-100 text-gray-800';
     }
   };
@@ -462,7 +569,7 @@ export default function OrganizationsPage() {
                 <Input
                   id="code"
                   value={form.code}
-                  onChange={(e) => setForm({ ...form, code: e.target.value })}
+                  onChange={(e) => setForm({ ...form, code: e.target.value})}
                   placeholder="例如：GAJ001"
                 />
               </div>
@@ -471,7 +578,7 @@ export default function OrganizationsPage() {
                 <Input
                   id="name"
                   value={form.name}
-                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  onChange={(e) => setForm({ ...form, name: e.target.value})}
                   placeholder="例如：市公安局"
                 />
               </div>
@@ -481,7 +588,7 @@ export default function OrganizationsPage() {
                 <Label htmlFor="type">组织类型 *</Label>
                 <Select
                   value={form.type}
-                  onValueChange={(value) => setForm({ ...form, type: value })}
+                  onValueChange={(value) => setForm({ ...form, type: value})}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="请选择组织类型" />
@@ -499,7 +606,7 @@ export default function OrganizationsPage() {
                 <Label htmlFor="parent">上级组织</Label>
                 <Select
                   value={form.parent_id}
-                  onValueChange={(value) => setForm({ ...form, parent_id: value })}
+                  onValueChange={(value) => setForm({ ...form, parent_id: value})}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="无（顶级组织）" />
@@ -522,7 +629,7 @@ export default function OrganizationsPage() {
                   id="sort_order"
                   type="number"
                   value={form.sort_order}
-                  onChange={(e) => setForm({ ...form, sort_order: e.target.value })}
+                  onChange={(e) => setForm({ ...form, sort_order: e.target.value})}
                   placeholder="0"
                 />
               </div>
@@ -531,7 +638,7 @@ export default function OrganizationsPage() {
                   <Switch
                     id="is_active"
                     checked={form.is_active}
-                    onCheckedChange={(checked) => setForm({ ...form, is_active: checked })}
+                    onCheckedChange={(checked) => setForm({ ...form, is_active: checked})}
                   />
                   <Label htmlFor="is_active">启用</Label>
                 </div>
