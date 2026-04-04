@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Search, Warehouse, MapPin, Building2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Warehouse, MapPin, Building2, Phone } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -32,148 +32,43 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
-import { toast } from 'sonner';
-
-interface Warehouse {
-  id: number;
-  code: string;
-  name: string;
-  location: string;
-  organization: string;
-  manager: string;
-  description: string;
-  is_active: boolean;
-  created_at: string;
-}
+import { Warehouse as WarehouseType, WarehouseFormData, fetchWarehouses, createWarehouse, updateWarehouse, deleteWarehouse } from '@/services/warehouse-service';
 
 interface WarehouseForm {
   code: string;
   name: string;
-  location: string;
-  organization: string;
+  address: string;
   manager: string;
-  description: string;
+  phone: string;
   is_active: boolean;
 }
 
-// 组织列表
-const ORGANIZATIONS = [
-  { value: 'gaj', label: 'XX市公安局' },
-  { value: 'gac', label: 'XX区公安处' },
-  { value: 'pcs', label: 'XX派出所' },
-];
-
-// 默认示例仓库
-const DEFAULT_WAREHOUSES: Warehouse[] = [
-  {
-    id: 1,
-    code: 'WH001',
-    name: '市局中心仓库',
-    location: 'XX市XX区XX路1号',
-    organization: 'gaj',
-    manager: '张三',
-    description: '市局中心库房，存储主要物资',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 2,
-    code: 'WH002',
-    name: 'XX区分库',
-    location: 'XX区XX路2号',
-    organization: 'gac',
-    manager: '李四',
-    description: 'XX区公安处分库房',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 3,
-    code: 'WH003',
-    name: 'XX派出所仓库',
-    location: 'XX派出所院内',
-    organization: 'pcs',
-    manager: '王五',
-    description: 'XX派出所自用仓库',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-];
-
-const STORAGE_KEY = 'warehouses';
+const initialForm: WarehouseForm = {
+  code: '',
+  name: '',
+  address: '',
+  manager: '',
+  phone: '',
+  is_active: true,
+};
 
 export default function WarehousesPage() {
-  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [warehouses, setWarehouses] = useState<WarehouseType[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingWarehouse, setEditingWarehouse] = useState<Warehouse | null>(null);
+  const [editingWarehouse, setEditingWarehouse] = useState<WarehouseType | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingWarehouse, setDeletingWarehouse] = useState<Warehouse | null>(null);
-  const [nextId, setNextId] = useState(4);
-  const [form, setForm] = useState<WarehouseForm>({
-    code: '',
-    name: '',
-    location: '',
-    organization: '',
-    manager: '',
-    description: '',
-    is_active: true,
-  });
+  const [form, setForm] = useState<WarehouseForm>(initialForm);
 
-  const getWarehousesFromStorage = (): Warehouse[] => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.warehouses || DEFAULT_WAREHOUSES;
-      }
-    } catch (error) {
-      console.error('读取仓库数据失败:', error);
-    }
-    return DEFAULT_WAREHOUSES;
-  };
-
-  const saveWarehousesToStorage = (warehouseList: Warehouse[], newNextId?: number) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        warehouses: warehouseList,
-        nextId: newNextId || nextId
-      }));
-    } catch (error) {
-      console.error('保存仓库数据失败:', error);
-    }
-  };
-
-  const fetchWarehouses = async () => {
+  const loadWarehouses = async () => {
     try {
       setLoading(true);
-      
-      // 从 localStorage 读取数据
-      const savedWarehouses = getWarehousesFromStorage();
-      const savedNextId = localStorage.getItem(STORAGE_KEY);
-      if (savedNextId) {
-        try {
-          const parsed = JSON.parse(savedNextId);
-          if (parsed.nextId) {
-            setNextId(parsed.nextId);
-          }
-        } catch (e) {
-          // 忽略
-        }
-      }
-      
-      setWarehouses(savedWarehouses);
+      const data = await fetchWarehouses();
+      setWarehouses(data);
     } catch (error) {
       console.error('获取仓库列表失败:', error);
     } finally {
@@ -182,101 +77,81 @@ export default function WarehousesPage() {
   };
 
   useEffect(() => {
-    fetchWarehouses();
+    loadWarehouses();
   }, []);
 
-  const handleOpenDialog = (warehouse?: Warehouse) => {
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      loadWarehouses();
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  const handleOpenDialog = (warehouse?: WarehouseType) => {
     if (warehouse) {
       setEditingWarehouse(warehouse);
       setForm({
         code: warehouse.code,
         name: warehouse.name,
-        location: warehouse.location,
-        organization: warehouse.organization,
-        manager: warehouse.manager,
-        description: warehouse.description,
+        address: warehouse.address || '',
+        manager: warehouse.manager || '',
+        phone: warehouse.phone || '',
         is_active: warehouse.is_active,
       });
     } else {
       setEditingWarehouse(null);
-      setForm({
-        code: '',
-        name: '',
-        location: '',
-        organization: '',
-        manager: '',
-        description: '',
-        is_active: true,
-      });
+      setForm(initialForm);
     }
     setDialogOpen(true);
+  };
+
+  const handleCloseDialog = () => {
+    setDialogOpen(false);
+    setEditingWarehouse(null);
+    setForm(initialForm);
   };
 
   const handleSave = async () => {
     try {
       if (!form.code || !form.name) {
-        toast.error('请填写必填字段');
+        alert('请填写必填字段');
         return;
       }
 
-      const warehouseList = getWarehousesFromStorage();
-      
+      const warehouseData: WarehouseFormData = {
+        code: form.code,
+        name: form.name,
+        address: form.address || undefined,
+        manager: form.manager || undefined,
+        phone: form.phone || undefined,
+        is_active: form.is_active,
+      };
+
       if (editingWarehouse) {
-        // 编辑现有仓库
-        const updatedList = warehouseList.map(wh => {
-          if (wh.id === editingWarehouse.id) {
-            return {
-              ...wh,
-              ...form,
-            };
-          }
-          return wh;
-        });
-        
-        saveWarehousesToStorage(updatedList);
+        await updateWarehouse(editingWarehouse.id, warehouseData);
       } else {
-        // 新增仓库
-        const newWarehouse: Warehouse = {
-          id: nextId,
-          ...form,
-          created_at: new Date().toISOString(),
-        };
-        
-        const updatedList = [...warehouseList, newWarehouse];
-        saveWarehousesToStorage(updatedList, nextId + 1);
-        setNextId(nextId + 1);
+        await createWarehouse(warehouseData);
       }
 
-      setDialogOpen(false);
-      toast.success(editingWarehouse ? '仓库已更新' : '仓库已创建');
-      fetchWarehouses();
+      await loadWarehouses();
+      handleCloseDialog();
     } catch (error) {
       console.error('保存仓库失败:', error);
-      toast.error('保存失败，请重试');
+      alert('保存失败，请重试');
     }
   };
 
   const handleDelete = async () => {
-    if (!deletingWarehouse) return;
-
+    if (!editingWarehouse) return;
     try {
-      const warehouseList = getWarehousesFromStorage();
-      const updatedList = warehouseList.filter(wh => wh.id !== deletingWarehouse.id);
-      
-      saveWarehousesToStorage(updatedList);
-
+      await deleteWarehouse(editingWarehouse.id);
+      await loadWarehouses();
       setDeleteDialogOpen(false);
-      setDeletingWarehouse(null);
-      toast.success('仓库已删除');
-      fetchWarehouses();
+      setEditingWarehouse(null);
     } catch (error) {
       console.error('删除仓库失败:', error);
-      toast.error('删除失败，请重试');
+      alert('删除失败，请重试');
     }
-  };
-
-  const getOrganizationLabel = (org: string) => {
-    return ORGANIZATIONS.find(o => o.value === org)?.label || org;
   };
 
   const filteredWarehouses = warehouses.filter(wh => 
@@ -293,7 +168,7 @@ export default function WarehousesPage() {
             仓库管理
           </CardTitle>
           <CardDescription>
-            管理各组织机构的仓库信息
+            管理仓库信息
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -321,9 +196,9 @@ export default function WarehousesPage() {
                 <TableRow>
                   <TableHead>仓库编码</TableHead>
                   <TableHead>仓库名称</TableHead>
-                  <TableHead>所属组织</TableHead>
-                  <TableHead>位置</TableHead>
-                  <TableHead>管理员</TableHead>
+                  <TableHead>地址</TableHead>
+                  <TableHead>负责人</TableHead>
+                  <TableHead>电话</TableHead>
                   <TableHead>状态</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -350,17 +225,19 @@ export default function WarehousesPage() {
                       <TableCell className="font-medium">{wh.name}</TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                          {getOrganizationLabel(wh.organization)}
-                        </div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
                           <MapPin className="h-4 w-4 text-muted-foreground" />
-                          {wh.location}
+                          {wh.address || '-'}
                         </div>
                       </TableCell>
-                      <TableCell>{wh.manager}</TableCell>
+                      <TableCell>{wh.manager || '-'}</TableCell>
+                      <TableCell>
+                        {wh.phone ? (
+                          <div className="flex items-center gap-1">
+                            <Phone className="h-4 w-4 text-muted-foreground" />
+                            {wh.phone}
+                          </div>
+                        ) : '-'}
+                      </TableCell>
                       <TableCell>
                         <Badge variant={wh.is_active ? 'default' : 'secondary'}>
                           {wh.is_active ? '启用' : '禁用'}
@@ -379,7 +256,7 @@ export default function WarehousesPage() {
                             variant="ghost"
                             size="icon"
                             onClick={() => {
-                              setDeletingWarehouse(wh);
+                              setEditingWarehouse(wh);
                               setDeleteDialogOpen(true);
                             }}
                           >
@@ -429,35 +306,17 @@ export default function WarehousesPage() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="location">位置</Label>
+              <Label htmlFor="address">地址</Label>
               <Input
-                id="location"
-                value={form.location}
-                onChange={(e) => setForm({ ...form, location: e.target.value})}
+                id="address"
+                value={form.address}
+                onChange={(e) => setForm({ ...form, address: e.target.value})}
                 placeholder="详细地址"
               />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="organization">所属组织</Label>
-                <Select
-                  value={form.organization}
-                  onValueChange={(value) => setForm({ ...form, organization: value})}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="请选择组织" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {ORGANIZATIONS.map((org) => (
-                      <SelectItem key={org.value} value={org.value}>
-                        {org.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="manager">管理员</Label>
+                <Label htmlFor="manager">负责人</Label>
                 <Input
                   id="manager"
                   value={form.manager}
@@ -465,16 +324,15 @@ export default function WarehousesPage() {
                   placeholder="负责人姓名"
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="description">描述</Label>
-              <Textarea
-                id="description"
-                value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value})}
-                placeholder="仓库描述"
-                rows={2}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="phone">电话</Label>
+                <Input
+                  id="phone"
+                  value={form.phone}
+                  onChange={(e) => setForm({ ...form, phone: e.target.value})}
+                  placeholder="联系电话"
+                />
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <Switch
@@ -486,7 +344,7 @@ export default function WarehousesPage() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>
+            <Button variant="outline" onClick={handleCloseDialog}>
               取消
             </Button>
             <Button onClick={handleSave}>
@@ -502,12 +360,16 @@ export default function WarehousesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>确认删除</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要删除仓库&quot;{deletingWarehouse?.name}&quot;吗？此操作不可恢复。
+              确定要删除仓库&quot;{editingWarehouse?.name}&quot;吗？此操作不可恢复。
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDelete}>删除</AlertDialogAction>
+            <AlertDialogCancel onClick={() => setEditingWarehouse(null)}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleDelete}>
+              删除
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

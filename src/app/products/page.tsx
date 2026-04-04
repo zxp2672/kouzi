@@ -42,21 +42,7 @@ import {
 } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-
-interface Product {
-  id: number;
-  code: string;
-  name: string;
-  category: string;
-  unit: string;
-  specification: string;
-  barcode: string;
-  purchase_price: number;
-  selling_price: number;
-  min_stock: number;
-  max_stock: number;
-  is_active: boolean;
-}
+import { Product, ProductFormData, fetchProducts, createProduct, updateProduct, deleteProduct } from '@/services/product-service';
 
 interface ProductForm {
   code: string;
@@ -86,13 +72,6 @@ const initialForm: ProductForm = {
   is_active: true,
 };
 
-// Mock数据
-const mockProducts: Product[] = [
-  { id: 1, code: 'PRD001', name: '对讲机', category: '通讯设备', unit: '台', specification: '数字对讲机', barcode: '6901234567890', purchase_price: 200, selling_price: 300, min_stock: 10, max_stock: 200, is_active: true },
-  { id: 2, code: 'PRD002', name: '警棍', category: '防暴器材', unit: '根', specification: '伸缩警棍', barcode: '6901234567891', purchase_price: 30, selling_price: 50, min_stock: 50, max_stock: 500, is_active: true },
-  { id: 3, code: 'PRD003', name: '防刺服', category: '防护装备', unit: '件', specification: '三级防刺', barcode: '6901234567892', purchase_price: 150, selling_price: 200, min_stock: 20, max_stock: 100, is_active: true },
-];
-
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,21 +82,16 @@ export default function ProductsPage() {
   const [form, setForm] = useState<ProductForm>(initialForm);
 
   useEffect(() => {
-    fetchProducts();
+    loadProducts();
   }, []);
 
-  const fetchProducts = async () => {
+  const loadProducts = async () => {
     try {
-      const savedProducts = localStorage.getItem('products');
-      if (savedProducts) {
-        setProducts(JSON.parse(savedProducts));
-      } else {
-        setProducts(mockProducts);
-        localStorage.setItem('products', JSON.stringify(mockProducts));
-      }
+      setLoading(true);
+      const data = await fetchProducts();
+      setProducts(data);
     } catch (error) {
       console.error('获取商品列表失败:', error);
-      setProducts(mockProducts);
     } finally {
       setLoading(false);
     }
@@ -125,7 +99,7 @@ export default function ProductsPage() {
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchProducts();
+      loadProducts();
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -136,14 +110,14 @@ export default function ProductsPage() {
       setForm({
         code: product.code,
         name: product.name,
-        category: product.category,
+        category: product.category || '',
         unit: product.unit,
-        specification: product.specification,
-        barcode: product.barcode,
-        purchase_price: product.purchase_price.toString(),
-        selling_price: product.selling_price.toString(),
-        min_stock: product.min_stock.toString(),
-        max_stock: product.max_stock.toString(),
+        specification: product.specification || '',
+        barcode: product.barcode || '',
+        purchase_price: product.purchase_price?.toString() || '',
+        selling_price: product.selling_price?.toString() || '',
+        min_stock: product.min_stock?.toString() || '',
+        max_stock: product.max_stock?.toString() || '',
         is_active: product.is_active,
       });
     } else {
@@ -166,32 +140,27 @@ export default function ProductsPage() {
     }
 
     try {
-      const productData: Product = {
-        id: editingProduct ? editingProduct.id : Date.now(),
+      const productData: ProductFormData = {
         code: form.code,
         name: form.name,
-        category: form.category,
+        category: form.category || undefined,
         unit: form.unit,
-        specification: form.specification,
-        barcode: form.barcode,
-        purchase_price: parseFloat(form.purchase_price) || 0,
-        selling_price: parseFloat(form.selling_price) || 0,
-        min_stock: parseInt(form.min_stock) || 0,
-        max_stock: parseInt(form.max_stock) || 0,
+        specification: form.specification || undefined,
+        barcode: form.barcode || undefined,
+        purchase_price: parseFloat(form.purchase_price) || undefined,
+        selling_price: parseFloat(form.selling_price) || undefined,
+        min_stock: parseInt(form.min_stock) || undefined,
+        max_stock: parseInt(form.max_stock) || undefined,
         is_active: form.is_active,
       };
 
-      let updatedProducts;
       if (editingProduct) {
-        updatedProducts = products.map((p) =>
-          p.id === editingProduct.id ? productData : p
-        );
+        await updateProduct(editingProduct.id, productData);
       } else {
-        updatedProducts = [...products, productData];
+        await createProduct(productData);
       }
 
-      setProducts(updatedProducts);
-      localStorage.setItem('products', JSON.stringify(updatedProducts));
+      await loadProducts();
       handleCloseDialog();
     } catch (error) {
       console.error('保存商品失败:', error);
@@ -202,9 +171,8 @@ export default function ProductsPage() {
   const handleDelete = async () => {
     if (!editingProduct) return;
     try {
-      const updatedProducts = products.filter((p) => p.id !== editingProduct.id);
-      setProducts(updatedProducts);
-      localStorage.setItem('products', JSON.stringify(updatedProducts));
+      await deleteProduct(editingProduct.id);
+      await loadProducts();
       setDeleteDialogOpen(false);
       setEditingProduct(null);
     } catch (error) {
@@ -218,14 +186,14 @@ export default function ProductsPage() {
       const data = products.map((product) => ({
         '商品编码': product.code,
         '商品名称': product.name,
-        '类别': product.category,
+        '类别': product.category || '-',
         '单位': product.unit,
-        '规格': product.specification,
-        '条码': product.barcode,
-        '采购价格': product.purchase_price,
-        '销售价格': product.selling_price,
-        '最小库存': product.min_stock,
-        '最大库存': product.max_stock,
+        '规格': product.specification || '-',
+        '条码': product.barcode || '-',
+        '采购价格': product.purchase_price || 0,
+        '销售价格': product.selling_price || 0,
+        '最小库存': product.min_stock || 0,
+        '最大库存': product.max_stock || 0,
         '启用状态': product.is_active ? '是' : '否',
       }));
 
@@ -355,8 +323,8 @@ export default function ProductsPage() {
                   <TableCell>{product.name}</TableCell>
                   <TableCell>{product.category || '-'}</TableCell>
                   <TableCell>{product.unit}</TableCell>
-                  <TableCell>¥{product.purchase_price}</TableCell>
-                  <TableCell>¥{product.selling_price}</TableCell>
+                  <TableCell>¥{product.purchase_price || 0}</TableCell>
+                  <TableCell>¥{product.selling_price || 0}</TableCell>
                   <TableCell>
                     <Badge variant={product.is_active ? 'default' : 'secondary'}>
                       {product.is_active ? '启用' : '禁用'}

@@ -1,471 +1,317 @@
-import { pgTable, serial, timestamp, varchar, integer, numeric, text, boolean, index } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, unique, pgPolicy, serial, varchar, integer, text, timestamp, numeric, boolean } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 
+
+
+export const inboundOrders = pgTable("inbound_orders", {
+	id: serial().primaryKey().notNull(),
+	orderNo: varchar("order_no", { length: 50 }).notNull(),
+	warehouseId: integer("warehouse_id").notNull(),
+	supplier: varchar({ length: 200 }),
+	type: varchar({ length: 20 }).notNull(),
+	status: varchar({ length: 20 }).default('pending').notNull(),
+	remark: text(),
+	createdBy: varchar("created_by", { length: 100 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+	approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
+	approvedBy: varchar("approved_by", { length: 100 }),
+}, (table) => [
+	index("inbound_orders_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("inbound_orders_order_no_idx").using("btree", table.orderNo.asc().nullsLast().op("text_ops")),
+	index("inbound_orders_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	index("inbound_orders_type_idx").using("btree", table.type.asc().nullsLast().op("text_ops")),
+	index("inbound_orders_warehouse_id_idx").using("btree", table.warehouseId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.warehouseId],
+			foreignColumns: [warehouses.id],
+			name: "inbound_orders_warehouse_id_warehouses_id_fk"
+		}),
+	unique("inbound_orders_order_no_unique").on(table.orderNo),
+	pgPolicy("inbound_orders_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("inbound_orders_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("inbound_orders_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("inbound_orders_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
+
 export const healthCheck = pgTable("health_check", {
-  id: serial().notNull(),
-  updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
+	id: serial().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow(),
 });
 
-// 仓库表
-export const warehouses = pgTable(
-  "warehouses",
-  {
-    id: serial().primaryKey(),
-    code: varchar("code", { length: 50 }).notNull().unique(),
-    name: varchar("name", { length: 200 }).notNull(),
-    address: text("address"),
-    manager: varchar("manager", { length: 100 }),
-    phone: varchar("phone", { length: 20 }),
-    is_active: boolean("is_active").default(true).notNull(),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-  },
-  (table) => [
-    index("warehouses_code_idx").on(table.code),
-    index("warehouses_is_active_idx").on(table.is_active),
-  ]
-);
+export const inventory = pgTable("inventory", {
+	id: serial().primaryKey().notNull(),
+	warehouseId: integer("warehouse_id").notNull(),
+	productId: integer("product_id").notNull(),
+	quantity: integer().default(0).notNull(),
+	lockedQuantity: integer("locked_quantity").default(0),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	index("inventory_product_id_idx").using("btree", table.productId.asc().nullsLast().op("int4_ops")),
+	index("inventory_warehouse_id_idx").using("btree", table.warehouseId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.warehouseId],
+			foreignColumns: [warehouses.id],
+			name: "inventory_warehouse_id_warehouses_id_fk"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.productId],
+			foreignColumns: [products.id],
+			name: "inventory_product_id_products_id_fk"
+		}).onDelete("cascade"),
+	pgPolicy("inventory_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("inventory_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("inventory_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("inventory_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
 
-// 商品表
-export const products = pgTable(
-  "products",
-  {
-    id: serial().primaryKey(),
-    code: varchar("code", { length: 50 }).notNull().unique(),
-    name: varchar("name", { length: 200 }).notNull(),
-    category: varchar("category", { length: 100 }),
-    unit: varchar("unit", { length: 20 }).notNull(), // 单位：个、箱、件等
-    specification: varchar("specification", { length: 200 }), // 规格
-    barcode: varchar("barcode", { length: 50 }), // 条形码
-    purchase_price: numeric("purchase_price", { precision: 10, scale: 2 }), // 采购价
-    selling_price: numeric("selling_price", { precision: 10, scale: 2 }), // 销售价
-    min_stock: integer("min_stock").default(0), // 最小库存预警
-    max_stock: integer("max_stock"), // 最大库存
-    is_active: boolean("is_active").default(true).notNull(),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-  },
-  (table) => [
-    index("products_code_idx").on(table.code),
-    index("products_category_idx").on(table.category),
-    index("products_barcode_idx").on(table.barcode),
-    index("products_is_active_idx").on(table.is_active),
-  ]
-);
+export const inboundItems = pgTable("inbound_items", {
+	id: serial().primaryKey().notNull(),
+	orderId: integer("order_id").notNull(),
+	productId: integer("product_id").notNull(),
+	quantity: integer().notNull(),
+	price: numeric({ precision: 10, scale:  2 }),
+	batchNo: varchar("batch_no", { length: 50 }),
+	productionDate: timestamp("production_date", { withTimezone: true, mode: 'string' }),
+	expiryDate: timestamp("expiry_date", { withTimezone: true, mode: 'string' }),
+	remark: text(),
+}, (table) => [
+	index("inbound_items_order_id_idx").using("btree", table.orderId.asc().nullsLast().op("int4_ops")),
+	index("inbound_items_product_id_idx").using("btree", table.productId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.orderId],
+			foreignColumns: [inboundOrders.id],
+			name: "inbound_items_order_id_inbound_orders_id_fk"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.productId],
+			foreignColumns: [products.id],
+			name: "inbound_items_product_id_products_id_fk"
+		}),
+	pgPolicy("inbound_items_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("inbound_items_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("inbound_items_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("inbound_items_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
 
-// 库存表
-export const inventory = pgTable(
-  "inventory",
-  {
-    id: serial().primaryKey(),
-    warehouse_id: integer("warehouse_id").notNull().references(() => warehouses.id, { onDelete: "cascade" }),
-    product_id: integer("product_id").notNull().references(() => products.id, { onDelete: "cascade" }),
-    quantity: integer("quantity").notNull().default(0),
-    locked_quantity: integer("locked_quantity").default(0), // 锁定数量（订单占用）
-    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("inventory_warehouse_id_idx").on(table.warehouse_id),
-    index("inventory_product_id_idx").on(table.product_id),
-  ]
-);
+export const outboundItems = pgTable("outbound_items", {
+	id: serial().primaryKey().notNull(),
+	orderId: integer("order_id").notNull(),
+	productId: integer("product_id").notNull(),
+	quantity: integer().notNull(),
+	price: numeric({ precision: 10, scale:  2 }),
+	remark: text(),
+}, (table) => [
+	index("outbound_items_order_id_idx").using("btree", table.orderId.asc().nullsLast().op("int4_ops")),
+	index("outbound_items_product_id_idx").using("btree", table.productId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.orderId],
+			foreignColumns: [outboundOrders.id],
+			name: "outbound_items_order_id_outbound_orders_id_fk"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.productId],
+			foreignColumns: [products.id],
+			name: "outbound_items_product_id_products_id_fk"
+		}),
+	pgPolicy("outbound_items_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("outbound_items_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("outbound_items_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("outbound_items_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
 
-// 入库单表
-export const inboundOrders = pgTable(
-  "inbound_orders",
-  {
-    id: serial().primaryKey(),
-    order_no: varchar("order_no", { length: 50 }).notNull().unique(),
-    warehouse_id: integer("warehouse_id").notNull().references(() => warehouses.id),
-    supplier: varchar("supplier", { length: 200 }), // 供应商
-    type: varchar("type", { length: 20 }).notNull(), // 入库类型：采购入库、退货入库、调拨入库等
-    status: varchar("status", { length: 20 }).notNull().default("pending"), // 状态：pending-待审核, approved-已审核, rejected-已拒绝
-    remark: text("remark"), // 备注
-    created_by: varchar("created_by", { length: 100 }), // 创建人
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-    approved_at: timestamp("approved_at", { withTimezone: true }), // 审核时间
-    approved_by: varchar("approved_by", { length: 100 }), // 审核人
-  },
-  (table) => [
-    index("inbound_orders_order_no_idx").on(table.order_no),
-    index("inbound_orders_warehouse_id_idx").on(table.warehouse_id),
-    index("inbound_orders_status_idx").on(table.status),
-    index("inbound_orders_type_idx").on(table.type),
-    index("inbound_orders_created_at_idx").on(table.created_at),
-  ]
-);
+export const outboundOrders = pgTable("outbound_orders", {
+	id: serial().primaryKey().notNull(),
+	orderNo: varchar("order_no", { length: 50 }).notNull(),
+	warehouseId: integer("warehouse_id").notNull(),
+	customer: varchar({ length: 200 }),
+	type: varchar({ length: 20 }).notNull(),
+	status: varchar({ length: 20 }).default('pending').notNull(),
+	remark: text(),
+	createdBy: varchar("created_by", { length: 100 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+	approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
+	approvedBy: varchar("approved_by", { length: 100 }),
+}, (table) => [
+	index("outbound_orders_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("outbound_orders_order_no_idx").using("btree", table.orderNo.asc().nullsLast().op("text_ops")),
+	index("outbound_orders_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	index("outbound_orders_type_idx").using("btree", table.type.asc().nullsLast().op("text_ops")),
+	index("outbound_orders_warehouse_id_idx").using("btree", table.warehouseId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.warehouseId],
+			foreignColumns: [warehouses.id],
+			name: "outbound_orders_warehouse_id_warehouses_id_fk"
+		}),
+	unique("outbound_orders_order_no_unique").on(table.orderNo),
+	pgPolicy("outbound_orders_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("outbound_orders_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("outbound_orders_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("outbound_orders_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
 
-// 入库单明细表
-export const inboundItems = pgTable(
-  "inbound_items",
-  {
-    id: serial().primaryKey(),
-    order_id: integer("order_id").notNull().references(() => inboundOrders.id, { onDelete: "cascade" }),
-    product_id: integer("product_id").notNull().references(() => products.id),
-    quantity: integer("quantity").notNull(), // 入库数量
-    price: numeric("price", { precision: 10, scale: 2 }), // 单价
-    batch_no: varchar("batch_no", { length: 50 }), // 批次号
-    production_date: timestamp("production_date", { withTimezone: true }), // 生产日期
-    expiry_date: timestamp("expiry_date", { withTimezone: true }), // 有效期
-    remark: text("remark"),
-  },
-  (table) => [
-    index("inbound_items_order_id_idx").on(table.order_id),
-    index("inbound_items_product_id_idx").on(table.product_id),
-  ]
-);
+export const products = pgTable("products", {
+	id: serial().primaryKey().notNull(),
+	code: varchar({ length: 50 }).notNull(),
+	name: varchar({ length: 200 }).notNull(),
+	category: varchar({ length: 100 }),
+	unit: varchar({ length: 20 }).notNull(),
+	specification: varchar({ length: 200 }),
+	barcode: varchar({ length: 50 }),
+	purchasePrice: numeric("purchase_price", { precision: 10, scale:  2 }),
+	sellingPrice: numeric("selling_price", { precision: 10, scale:  2 }),
+	minStock: integer("min_stock").default(0),
+	maxStock: integer("max_stock"),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	index("products_barcode_idx").using("btree", table.barcode.asc().nullsLast().op("text_ops")),
+	index("products_category_idx").using("btree", table.category.asc().nullsLast().op("text_ops")),
+	index("products_code_idx").using("btree", table.code.asc().nullsLast().op("text_ops")),
+	index("products_is_active_idx").using("btree", table.isActive.asc().nullsLast().op("bool_ops")),
+	unique("products_code_unique").on(table.code),
+	pgPolicy("products_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("products_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("products_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("products_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
 
-// 出库单表
-export const outboundOrders = pgTable(
-  "outbound_orders",
-  {
-    id: serial().primaryKey(),
-    order_no: varchar("order_no", { length: 50 }).notNull().unique(),
-    warehouse_id: integer("warehouse_id").notNull().references(() => warehouses.id),
-    customer: varchar("customer", { length: 200 }), // 客户
-    type: varchar("type", { length: 20 }).notNull(), // 出库类型：销售出库、退货出库、调拨出库等
-    status: varchar("status", { length: 20 }).notNull().default("pending"), // 状态：pending-待审核, approved-已审核, rejected-已拒绝
-    remark: text("remark"), // 备注
-    created_by: varchar("created_by", { length: 100 }), // 创建人
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-    approved_at: timestamp("approved_at", { withTimezone: true }), // 审核时间
-    approved_by: varchar("approved_by", { length: 100 }), // 审核人
-  },
-  (table) => [
-    index("outbound_orders_order_no_idx").on(table.order_no),
-    index("outbound_orders_warehouse_id_idx").on(table.warehouse_id),
-    index("outbound_orders_status_idx").on(table.status),
-    index("outbound_orders_type_idx").on(table.type),
-    index("outbound_orders_created_at_idx").on(table.created_at),
-  ]
-);
+export const stockCountItems = pgTable("stock_count_items", {
+	id: serial().primaryKey().notNull(),
+	orderId: integer("order_id").notNull(),
+	productId: integer("product_id").notNull(),
+	systemQuantity: integer("system_quantity").notNull(),
+	actualQuantity: integer("actual_quantity").notNull(),
+	difference: integer(),
+	remark: text(),
+}, (table) => [
+	index("stock_count_items_order_id_idx").using("btree", table.orderId.asc().nullsLast().op("int4_ops")),
+	index("stock_count_items_product_id_idx").using("btree", table.productId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.orderId],
+			foreignColumns: [stockCounts.id],
+			name: "stock_count_items_order_id_stock_counts_id_fk"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.productId],
+			foreignColumns: [products.id],
+			name: "stock_count_items_product_id_products_id_fk"
+		}),
+	pgPolicy("stock_count_items_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("stock_count_items_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("stock_count_items_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("stock_count_items_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
 
-// 出库单明细表
-export const outboundItems = pgTable(
-  "outbound_items",
-  {
-    id: serial().primaryKey(),
-    order_id: integer("order_id").notNull().references(() => outboundOrders.id, { onDelete: "cascade" }),
-    product_id: integer("product_id").notNull().references(() => products.id),
-    quantity: integer("quantity").notNull(), // 出库数量
-    price: numeric("price", { precision: 10, scale: 2 }), // 单价
-    remark: text("remark"),
-  },
-  (table) => [
-    index("outbound_items_order_id_idx").on(table.order_id),
-    index("outbound_items_product_id_idx").on(table.product_id),
-  ]
-);
+export const stockCounts = pgTable("stock_counts", {
+	id: serial().primaryKey().notNull(),
+	orderNo: varchar("order_no", { length: 50 }).notNull(),
+	warehouseId: integer("warehouse_id").notNull(),
+	status: varchar({ length: 20 }).default('draft').notNull(),
+	countDate: timestamp("count_date", { withTimezone: true, mode: 'string' }).notNull(),
+	remark: text(),
+	createdBy: varchar("created_by", { length: 100 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+	approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
+	approvedBy: varchar("approved_by", { length: 100 }),
+}, (table) => [
+	index("stock_counts_count_date_idx").using("btree", table.countDate.asc().nullsLast().op("timestamptz_ops")),
+	index("stock_counts_order_no_idx").using("btree", table.orderNo.asc().nullsLast().op("text_ops")),
+	index("stock_counts_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	index("stock_counts_warehouse_id_idx").using("btree", table.warehouseId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.warehouseId],
+			foreignColumns: [warehouses.id],
+			name: "stock_counts_warehouse_id_warehouses_id_fk"
+		}),
+	unique("stock_counts_order_no_unique").on(table.orderNo),
+	pgPolicy("stock_counts_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("stock_counts_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("stock_counts_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("stock_counts_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
 
-// 盘点单表
-export const stockCounts = pgTable(
-  "stock_counts",
-  {
-    id: serial().primaryKey(),
-    order_no: varchar("order_no", { length: 50 }).notNull().unique(),
-    warehouse_id: integer("warehouse_id").notNull().references(() => warehouses.id),
-    status: varchar("status", { length: 20 }).notNull().default("draft"), // 状态：draft-草稿, pending-待审核, approved-已审核, rejected-已拒绝
-    count_date: timestamp("count_date", { withTimezone: true }).notNull(), // 盘点日期
-    remark: text("remark"), // 备注
-    created_by: varchar("created_by", { length: 100 }), // 创建人
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-    approved_at: timestamp("approved_at", { withTimezone: true }), // 审核时间
-    approved_by: varchar("approved_by", { length: 100 }), // 审核人
-  },
-  (table) => [
-    index("stock_counts_order_no_idx").on(table.order_no),
-    index("stock_counts_warehouse_id_idx").on(table.warehouse_id),
-    index("stock_counts_status_idx").on(table.status),
-    index("stock_counts_count_date_idx").on(table.count_date),
-  ]
-);
+export const transferOrders = pgTable("transfer_orders", {
+	id: serial().primaryKey().notNull(),
+	orderNo: varchar("order_no", { length: 50 }).notNull(),
+	fromWarehouseId: integer("from_warehouse_id").notNull(),
+	toWarehouseId: integer("to_warehouse_id").notNull(),
+	status: varchar({ length: 20 }).default('pending').notNull(),
+	remark: text(),
+	createdBy: varchar("created_by", { length: 100 }),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+	approvedAt: timestamp("approved_at", { withTimezone: true, mode: 'string' }),
+	approvedBy: varchar("approved_by", { length: 100 }),
+	completedAt: timestamp("completed_at", { withTimezone: true, mode: 'string' }),
+	completedBy: varchar("completed_by", { length: 100 }),
+}, (table) => [
+	index("transfer_orders_created_at_idx").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
+	index("transfer_orders_from_warehouse_id_idx").using("btree", table.fromWarehouseId.asc().nullsLast().op("int4_ops")),
+	index("transfer_orders_order_no_idx").using("btree", table.orderNo.asc().nullsLast().op("text_ops")),
+	index("transfer_orders_status_idx").using("btree", table.status.asc().nullsLast().op("text_ops")),
+	index("transfer_orders_to_warehouse_id_idx").using("btree", table.toWarehouseId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.fromWarehouseId],
+			foreignColumns: [warehouses.id],
+			name: "transfer_orders_from_warehouse_id_warehouses_id_fk"
+		}),
+	foreignKey({
+			columns: [table.toWarehouseId],
+			foreignColumns: [warehouses.id],
+			name: "transfer_orders_to_warehouse_id_warehouses_id_fk"
+		}),
+	unique("transfer_orders_order_no_unique").on(table.orderNo),
+	pgPolicy("transfer_orders_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("transfer_orders_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("transfer_orders_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("transfer_orders_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
 
-// 盘点单明细表
-export const stockCountItems = pgTable(
-  "stock_count_items",
-  {
-    id: serial().primaryKey(),
-    order_id: integer("order_id").notNull().references(() => stockCounts.id, { onDelete: "cascade" }),
-    product_id: integer("product_id").notNull().references(() => products.id),
-    system_quantity: integer("system_quantity").notNull(), // 系统库存
-    actual_quantity: integer("actual_quantity").notNull(), // 实盘数量
-    difference: integer("difference"), // 差异数量
-    remark: text("remark"),
-  },
-  (table) => [
-    index("stock_count_items_order_id_idx").on(table.order_id),
-    index("stock_count_items_product_id_idx").on(table.product_id),
-  ]
-);
+export const transferItems = pgTable("transfer_items", {
+	id: serial().primaryKey().notNull(),
+	orderId: integer("order_id").notNull(),
+	productId: integer("product_id").notNull(),
+	quantity: integer().notNull(),
+	remark: text(),
+}, (table) => [
+	index("transfer_items_order_id_idx").using("btree", table.orderId.asc().nullsLast().op("int4_ops")),
+	index("transfer_items_product_id_idx").using("btree", table.productId.asc().nullsLast().op("int4_ops")),
+	foreignKey({
+			columns: [table.orderId],
+			foreignColumns: [transferOrders.id],
+			name: "transfer_items_order_id_transfer_orders_id_fk"
+		}).onDelete("cascade"),
+	foreignKey({
+			columns: [table.productId],
+			foreignColumns: [products.id],
+			name: "transfer_items_product_id_products_id_fk"
+		}),
+	pgPolicy("transfer_items_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("transfer_items_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("transfer_items_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("transfer_items_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
 
-// 调拨单表
-export const transferOrders = pgTable(
-  "transfer_orders",
-  {
-    id: serial().primaryKey(),
-    order_no: varchar("order_no", { length: 50 }).notNull().unique(),
-    from_warehouse_id: integer("from_warehouse_id").notNull().references(() => warehouses.id),
-    to_warehouse_id: integer("to_warehouse_id").notNull().references(() => warehouses.id),
-    status: varchar("status", { length: 20 }).notNull().default("pending"), // 状态：pending-待审核, approved-已审核, rejected-已拒绝, completed-已完成
-    remark: text("remark"), // 备注
-    created_by: varchar("created_by", { length: 100 }), // 创建人
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-    approved_at: timestamp("approved_at", { withTimezone: true }), // 审核时间
-    approved_by: varchar("approved_by", { length: 100 }), // 审核人
-    completed_at: timestamp("completed_at", { withTimezone: true }), // 完成时间
-    completed_by: varchar("completed_by", { length: 100 }), // 完成人
-  },
-  (table) => [
-    index("transfer_orders_order_no_idx").on(table.order_no),
-    index("transfer_orders_from_warehouse_id_idx").on(table.from_warehouse_id),
-    index("transfer_orders_to_warehouse_id_idx").on(table.to_warehouse_id),
-    index("transfer_orders_status_idx").on(table.status),
-    index("transfer_orders_created_at_idx").on(table.created_at),
-  ]
-);
-
-// 调拨单明细表
-export const transferItems = pgTable(
-  "transfer_items",
-  {
-    id: serial().primaryKey(),
-    order_id: integer("order_id").notNull().references(() => transferOrders.id, { onDelete: "cascade" }),
-    product_id: integer("product_id").notNull().references(() => products.id),
-    quantity: integer("quantity").notNull(), // 调拨数量
-    remark: text("remark"),
-  },
-  (table) => [
-    index("transfer_items_order_id_idx").on(table.order_id),
-    index("transfer_items_product_id_idx").on(table.product_id),
-  ]
-);
-
-// 角色表
-export const roles = pgTable(
-  "roles",
-  {
-    id: serial().primaryKey(),
-    code: varchar("code", { length: 50 }).notNull().unique(),
-    name: varchar("name", { length: 100 }).notNull(),
-    description: text("description"),
-    level: integer("level").default(1),
-    is_active: boolean("is_active").default(true).notNull(),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-  },
-  (table) => [
-    index("roles_code_idx").on(table.code),
-    index("roles_level_idx").on(table.level),
-    index("roles_is_active_idx").on(table.is_active),
-  ]
-);
-
-// 权限表
-export const permissions = pgTable(
-  "permissions",
-  {
-    id: serial().primaryKey(),
-    code: varchar("code", { length: 100 }).notNull().unique(),
-    name: varchar("name", { length: 100 }).notNull(),
-    module: varchar("module", { length: 50 }).notNull(),
-    action: varchar("action", { length: 50 }).notNull(),
-    description: text("description"),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("permissions_code_idx").on(table.code),
-    index("permissions_module_idx").on(table.module),
-  ]
-);
-
-// 角色权限关联表
-export const rolePermissions = pgTable(
-  "role_permissions",
-  {
-    id: serial().primaryKey(),
-    role_id: integer("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
-    permission_id: integer("permission_id").notNull().references(() => permissions.id, { onDelete: "cascade" }),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("role_permissions_role_id_idx").on(table.role_id),
-    index("role_permissions_permission_id_idx").on(table.permission_id),
-  ]
-);
-
-// 用户表
-export const users = pgTable(
-  "users",
-  {
-    id: serial().primaryKey(),
-    username: varchar("username", { length: 50 }).notNull().unique(),
-    password: varchar("password", { length: 255 }),
-    name: varchar("name", { length: 100 }).notNull(),
-    email: varchar("email", { length: 100 }),
-    phone: varchar("phone", { length: 20 }),
-    role_id: integer("role_id").references(() => roles.id),
-    department: varchar("department", { length: 100 }),
-    is_active: boolean("is_active").default(true).notNull(),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-  },
-  (table) => [
-    index("users_username_idx").on(table.username),
-    index("users_role_id_idx").on(table.role_id),
-    index("users_is_active_idx").on(table.is_active),
-  ]
-);
-
-// 用户仓库关联表
-export const userWarehouses = pgTable(
-  "user_warehouses",
-  {
-    id: serial().primaryKey(),
-    user_id: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    warehouse_id: integer("warehouse_id").notNull().references(() => warehouses.id, { onDelete: "cascade" }),
-    is_default: boolean("is_default").default(false),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("user_warehouses_user_id_idx").on(table.user_id),
-    index("user_warehouses_warehouse_id_idx").on(table.warehouse_id),
-  ]
-);
-
-// 审核流程配置表
-export const approvalFlows = pgTable(
-  "approval_flows",
-  {
-    id: serial().primaryKey(),
-    code: varchar("code", { length: 50 }).notNull().unique(),
-    name: varchar("name", { length: 100 }).notNull(),
-    module: varchar("module", { length: 50 }).notNull(),
-    description: text("description"),
-    is_active: boolean("is_active").default(true).notNull(),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-  },
-  (table) => [
-    index("approval_flows_code_idx").on(table.code),
-    index("approval_flows_module_idx").on(table.module),
-    index("approval_flows_is_active_idx").on(table.is_active),
-  ]
-);
-
-// 审核流程节点表
-export const approvalFlowNodes = pgTable(
-  "approval_flow_nodes",
-  {
-    id: serial().primaryKey(),
-    flow_id: integer("flow_id").notNull().references(() => approvalFlows.id, { onDelete: "cascade" }),
-    step_order: integer("step_order").notNull(),
-    name: varchar("name", { length: 100 }).notNull(),
-    role_id: integer("role_id").references(() => roles.id),
-    min_level: integer("min_level").default(1),
-    approver_user_id: integer("approver_user_id").references(() => users.id),
-    is_final: boolean("is_final").default(false),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("approval_flow_nodes_flow_id_idx").on(table.flow_id),
-    index("approval_flow_nodes_step_order_idx").on(table.step_order),
-  ]
-);
-
-// 审核记录表
-export const approvalRecords = pgTable(
-  "approval_records",
-  {
-    id: serial().primaryKey(),
-    module: varchar("module", { length: 50 }).notNull(),
-    order_id: integer("order_id").notNull(),
-    flow_node_id: integer("flow_node_id").references(() => approvalFlowNodes.id),
-    step_order: integer("step_order").notNull(),
-    approver_id: integer("approver_id").references(() => users.id),
-    approver_name: varchar("approver_name", { length: 100 }),
-    status: varchar("status", { length: 20 }).notNull(),
-    comment: text("comment"),
-    approved_at: timestamp("approved_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("approval_records_module_order_id_idx").on(table.module, table.order_id),
-    index("approval_records_approver_id_idx").on(table.approver_id),
-  ]
-);
-
-// 组织架构表（支持多级结构）
-export const organizations = pgTable(
-  "organizations",
-  {
-    id: serial().primaryKey(),
-    code: varchar("code", { length: 50 }).notNull().unique(),
-    name: varchar("name", { length: 200 }).notNull(),
-    type: varchar("type", { length: 50 }).notNull(), // 组织类型：公安局机关、公安处机关、所队
-    level: integer("level").notNull(), // 组织层级：1-公安局机关, 2-公安处机关, 3-所队
-    parent_id: integer("parent_id"), // 父组织ID，顶级组织为null
-    path: varchar("path", { length: 500 }), // 路径，如"1.2.3"格式，便于查询下级
-    sort_order: integer("sort_order").default(0),
-    is_active: boolean("is_active").default(true).notNull(),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    updated_at: timestamp("updated_at", { withTimezone: true }),
-  },
-  (table) => [
-    index("organizations_code_idx").on(table.code),
-    index("organizations_type_idx").on(table.type),
-    index("organizations_level_idx").on(table.level),
-    index("organizations_parent_id_idx").on(table.parent_id),
-    index("organizations_path_idx").on(table.path),
-    index("organizations_is_active_idx").on(table.is_active),
-  ]
-);
-
-// 用户组织关联表
-export const userOrganizations = pgTable(
-  "user_organizations",
-  {
-    id: serial().primaryKey(),
-    user_id: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
-    organization_id: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-    is_default: boolean("is_default").default(false),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("user_organizations_user_id_idx").on(table.user_id),
-    index("user_organizations_organization_id_idx").on(table.organization_id),
-  ]
-);
-
-// 仓库组织关联表
-export const warehouseOrganizations = pgTable(
-  "warehouse_organizations",
-  {
-    id: serial().primaryKey(),
-    warehouse_id: integer("warehouse_id").notNull().references(() => warehouses.id, { onDelete: "cascade" }),
-    organization_id: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
-    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("warehouse_organizations_warehouse_id_idx").on(table.warehouse_id),
-    index("warehouse_organizations_organization_id_idx").on(table.organization_id),
-  ]
-);
-
-// 系统配置表
-export const systemConfigs = pgTable(
-  "system_configs",
-  {
-    id: serial().primaryKey(),
-    config_key: varchar("config_key", { length: 100 }).notNull().unique(),
-    config_value: text("config_value"),
-    config_type: varchar("config_type", { length: 20 }).notNull().default("string"), // string, number, boolean, image
-    description: varchar("description", { length: 255 }),
-    updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
-  },
-  (table) => [
-    index("system_configs_config_key_idx").on(table.config_key),
-  ]
-);
+export const warehouses = pgTable("warehouses", {
+	id: serial().primaryKey().notNull(),
+	code: varchar({ length: 50 }).notNull(),
+	name: varchar({ length: 200 }).notNull(),
+	address: text(),
+	manager: varchar({ length: 100 }),
+	phone: varchar({ length: 20 }),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	index("warehouses_code_idx").using("btree", table.code.asc().nullsLast().op("text_ops")),
+	index("warehouses_is_active_idx").using("btree", table.isActive.asc().nullsLast().op("bool_ops")),
+	unique("warehouses_code_unique").on(table.code),
+	pgPolicy("warehouses_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("warehouses_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("warehouses_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("warehouses_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);

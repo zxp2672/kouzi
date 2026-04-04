@@ -385,7 +385,7 @@ export default function OrganizationsPage() {
 
   const getAvailableParents = (currentOrg?: Organization | null): Organization[] => {
     // 扁平化组织列表
-    const flatten = (orgs: Organization[]): any[] => {
+    const flatten = (orgs: Organization[]): Organization[] => {
       let result: Organization[] = [];
       orgs.forEach(org => {
         if (!currentOrg || org.id !== currentOrg.id) {
@@ -415,7 +415,7 @@ export default function OrganizationsPage() {
     }
   };
 
-  const renderOrganizationRow = (org: Organization, level: number = 0): any => {
+  const renderOrganizationRow = (org: Organization, level: number = 0) => {
     const hasChildren = org.children && org.children.length > 0;
     const isExpanded = expandedNodes.has(org.id);
     const indent = level * 24;
