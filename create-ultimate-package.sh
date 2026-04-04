@@ -25,6 +25,7 @@ cp -r \
   tsconfig.json \
   public \
   src \
+  scripts \
   .npmrc \
   README.md \
   DEPLOYMENT.md \
