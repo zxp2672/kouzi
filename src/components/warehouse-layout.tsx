@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
+import ApprovalTodoBadge from '@/components/approval-todo-badge';
 
 const navigation = [
   { name: '库存看板', href: '/', icon: LayoutDashboard },
@@ -169,6 +170,7 @@ export default function WarehouseLayout({ children }: LayoutProps) {
           <div className="flex-1" />
           
           <div className="flex items-center gap-4">
+            <ApprovalTodoBadge />
             <span className="text-sm text-gray-500 dark:text-gray-400">
               v1.0
             </span>
