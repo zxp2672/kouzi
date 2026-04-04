@@ -63,8 +63,6 @@ interface StockCountOrder {
 export default function StockCountPage() {
   const [orders, setOrders] = useState<StockCountOrder[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
-  const [products, setProducts] = useState<Product[]>([]);
-  const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -145,7 +143,7 @@ export default function StockCountPage() {
         .order('code');
 
       if (error) throw error;
-      setProducts(data || []);
+      // setProducts(data || []);
     } catch (error) {
       console.error('获取商品列表失败:', error);
     }
@@ -168,7 +166,7 @@ export default function StockCountPage() {
         quantity: item.quantity || 0,
       })) || [];
 
-      setInventory(inventoryItems);
+      // setInventory(inventoryItems);
 
       // 初始化盘点明细
       setItems(
@@ -256,7 +254,7 @@ export default function StockCountPage() {
       setCountDate(new Date().toISOString().split('T')[0]);
       setRemark('');
       setItems([]);
-      setInventory([]);
+      // setInventory([]);
       setEditingOrder(null);
     }
     setDialogOpen(true);
@@ -265,7 +263,7 @@ export default function StockCountPage() {
   const handleCloseDialog = () => {
     setDialogOpen(false);
     setItems([]);
-    setInventory([]);
+    // setInventory([]);
     setEditingOrder(null);
   };
 

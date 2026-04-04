@@ -243,3 +243,156 @@ export const transferItems = pgTable(
     index("transfer_items_product_id_idx").on(table.product_id),
   ]
 );
+
+// 角色表
+export const roles = pgTable(
+  "roles",
+  {
+    id: serial().primaryKey(),
+    code: varchar("code", { length: 50 }).notNull().unique(),
+    name: varchar("name", { length: 100 }).notNull(),
+    description: text("description"),
+    level: integer("level").default(1),
+    is_active: boolean("is_active").default(true).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("roles_code_idx").on(table.code),
+    index("roles_level_idx").on(table.level),
+    index("roles_is_active_idx").on(table.is_active),
+  ]
+);
+
+// 权限表
+export const permissions = pgTable(
+  "permissions",
+  {
+    id: serial().primaryKey(),
+    code: varchar("code", { length: 100 }).notNull().unique(),
+    name: varchar("name", { length: 100 }).notNull(),
+    module: varchar("module", { length: 50 }).notNull(),
+    action: varchar("action", { length: 50 }).notNull(),
+    description: text("description"),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("permissions_code_idx").on(table.code),
+    index("permissions_module_idx").on(table.module),
+  ]
+);
+
+// 角色权限关联表
+export const rolePermissions = pgTable(
+  "role_permissions",
+  {
+    id: serial().primaryKey(),
+    role_id: integer("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
+    permission_id: integer("permission_id").notNull().references(() => permissions.id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("role_permissions_role_id_idx").on(table.role_id),
+    index("role_permissions_permission_id_idx").on(table.permission_id),
+  ]
+);
+
+// 用户表
+export const users = pgTable(
+  "users",
+  {
+    id: serial().primaryKey(),
+    username: varchar("username", { length: 50 }).notNull().unique(),
+    password: varchar("password", { length: 255 }),
+    name: varchar("name", { length: 100 }).notNull(),
+    email: varchar("email", { length: 100 }),
+    phone: varchar("phone", { length: 20 }),
+    role_id: integer("role_id").references(() => roles.id),
+    department: varchar("department", { length: 100 }),
+    is_active: boolean("is_active").default(true).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("users_username_idx").on(table.username),
+    index("users_role_id_idx").on(table.role_id),
+    index("users_is_active_idx").on(table.is_active),
+  ]
+);
+
+// 用户仓库关联表
+export const userWarehouses = pgTable(
+  "user_warehouses",
+  {
+    id: serial().primaryKey(),
+    user_id: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    warehouse_id: integer("warehouse_id").notNull().references(() => warehouses.id, { onDelete: "cascade" }),
+    is_default: boolean("is_default").default(false),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("user_warehouses_user_id_idx").on(table.user_id),
+    index("user_warehouses_warehouse_id_idx").on(table.warehouse_id),
+  ]
+);
+
+// 审核流程配置表
+export const approvalFlows = pgTable(
+  "approval_flows",
+  {
+    id: serial().primaryKey(),
+    code: varchar("code", { length: 50 }).notNull().unique(),
+    name: varchar("name", { length: 100 }).notNull(),
+    module: varchar("module", { length: 50 }).notNull(),
+    description: text("description"),
+    is_active: boolean("is_active").default(true).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("approval_flows_code_idx").on(table.code),
+    index("approval_flows_module_idx").on(table.module),
+    index("approval_flows_is_active_idx").on(table.is_active),
+  ]
+);
+
+// 审核流程节点表
+export const approvalFlowNodes = pgTable(
+  "approval_flow_nodes",
+  {
+    id: serial().primaryKey(),
+    flow_id: integer("flow_id").notNull().references(() => approvalFlows.id, { onDelete: "cascade" }),
+    step_order: integer("step_order").notNull(),
+    name: varchar("name", { length: 100 }).notNull(),
+    role_id: integer("role_id").references(() => roles.id),
+    min_level: integer("min_level").default(1),
+    approver_user_id: integer("approver_user_id").references(() => users.id),
+    is_final: boolean("is_final").default(false),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("approval_flow_nodes_flow_id_idx").on(table.flow_id),
+    index("approval_flow_nodes_step_order_idx").on(table.step_order),
+  ]
+);
+
+// 审核记录表
+export const approvalRecords = pgTable(
+  "approval_records",
+  {
+    id: serial().primaryKey(),
+    module: varchar("module", { length: 50 }).notNull(),
+    order_id: integer("order_id").notNull(),
+    flow_node_id: integer("flow_node_id").references(() => approvalFlowNodes.id),
+    step_order: integer("step_order").notNull(),
+    approver_id: integer("approver_id").references(() => users.id),
+    approver_name: varchar("approver_name", { length: 100 }),
+    status: varchar("status", { length: 20 }).notNull(),
+    comment: text("comment"),
+    approved_at: timestamp("approved_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("approval_records_module_order_id_idx").on(table.module, table.order_id),
+    index("approval_records_approver_id_idx").on(table.approver_id),
+  ]
+);

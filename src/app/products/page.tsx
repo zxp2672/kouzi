@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Search } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -93,6 +94,9 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [deletingProduct, setDeletingProduct] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductForm>(initialForm);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<any[]>([]);
 
   useEffect(() => {
     fetchProducts();
@@ -220,6 +224,152 @@ export default function ProductsPage() {
     }
   };
 
+  // 导出功能
+  const handleExport = () => {
+    if (products.length === 0) {
+      alert('暂无数据可导出');
+      return;
+    }
+
+    const exportData = products.map((product) => ({
+      '商品编码': product.code,
+      '商品名称': product.name,
+      '分类': product.category || '',
+      '单位': product.unit,
+      '规格': product.specification || '',
+      '条形码': product.barcode || '',
+      '采购价': product.purchase_price || '',
+      '销售价': product.selling_price || '',
+      '最低库存': product.min_stock,
+      '最高库存': product.max_stock || '',
+      '状态': product.is_active ? '启用' : '禁用',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '商品列表');
+
+    // 设置列宽
+    worksheet['!cols'] = [
+      { wch: 15 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 8 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 8 },
+    ];
+
+    XLSX.writeFile(workbook, `商品列表_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  // 下载模板
+  const handleDownloadTemplate = () => {
+    const templateData = [
+      {
+        '商品编码': 'P001',
+        '商品名称': '示例商品',
+        '分类': '电子产品',
+        '单位': '个',
+        '规格': '标准规格',
+        '条形码': '6901234567890',
+        '采购价': 100.00,
+        '销售价': 150.00,
+        '最低库存': 10,
+        '最高库存': 100,
+      },
+    ];
+
+    const worksheet = XLSX.utils.json_to_sheet(templateData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '导入模板');
+
+    worksheet['!cols'] = [
+      { wch: 15 },
+      { wch: 25 },
+      { wch: 15 },
+      { wch: 8 },
+      { wch: 20 },
+      { wch: 15 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+    ];
+
+    XLSX.writeFile(workbook, '商品导入模板.xlsx');
+  };
+
+  // 处理文件选择
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setImportFile(file);
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        const jsonData = XLSX.utils.sheet_to_json(firstSheet);
+        setImportPreview(jsonData);
+      } catch (error) {
+        console.error('解析文件失败:', error);
+        alert('文件解析失败，请检查文件格式');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  };
+
+  // 执行导入
+  const handleImport = async () => {
+    if (importPreview.length === 0) {
+      alert('请先选择文件');
+      return;
+    }
+
+    try {
+      const client = getSupabaseClient();
+      const productsToInsert = importPreview.map((item: any) => ({
+        code: item['商品编码'] || item['product_code'] || item['code'] || '',
+        name: item['商品名称'] || item['product_name'] || item['name'] || '',
+        category: item['分类'] || item['category'] || null,
+        unit: item['单位'] || item['unit'] || '个',
+        specification: item['规格'] || item['specification'] || null,
+        barcode: item['条形码'] || item['barcode'] || null,
+        purchase_price: item['采购价'] ? parseFloat(item['采购价']) : item['purchase_price'] || null,
+        selling_price: item['销售价'] ? parseFloat(item['销售价']) : item['selling_price'] || null,
+        min_stock: item['最低库存'] ? parseInt(item['最低库存']) : item['min_stock'] || 0,
+        max_stock: item['最高库存'] ? parseInt(item['最高库存']) : item['max_stock'] || null,
+        is_active: true,
+      })).filter((p) => p.code && p.name);
+
+      if (productsToInsert.length === 0) {
+        alert('没有有效的商品数据');
+        return;
+      }
+
+      const { error } = await client.from('products').insert(productsToInsert);
+
+      if (error) throw error;
+
+      setImportDialogOpen(false);
+      setImportFile(null);
+      setImportPreview([]);
+      fetchProducts();
+      alert(`成功导入 ${productsToInsert.length} 条商品数据`);
+    } catch (error) {
+      console.error('导入失败:', error);
+      alert('导入失败，请重试');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -235,10 +385,20 @@ export default function ProductsPage() {
           <h1 className="text-3xl font-bold tracking-tight">商品管理</h1>
           <p className="text-muted-foreground mt-2">管理所有商品信息</p>
         </div>
-        <Button onClick={() => handleOpenDialog()}>
-          <Plus className="mr-2 h-4 w-4" />
-          新增商品
-        </Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={handleExport}>
+            <Download className="mr-2 h-4 w-4" />
+            导出
+          </Button>
+          <Button variant="outline" onClick={() => setImportDialogOpen(true)}>
+            <Upload className="mr-2 h-4 w-4" />
+            导入
+          </Button>
+          <Button onClick={() => handleOpenDialog()}>
+            <Plus className="mr-2 h-4 w-4" />
+            新增商品
+          </Button>
+        </div>
       </div>
 
       {/* 搜索栏 */}
@@ -464,6 +624,98 @@ export default function ProductsPage() {
               取消
             </Button>
             <Button onClick={handleSave}>保存</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 导入对话框 */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              <div className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              导入商品
+            </div>
+          </DialogTitle>
+            <DialogDescription>
+              下载模板 → 填写数据 → 选择文件 → 预览确认 → 导入
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="flex items-center gap-4">
+              <Button variant="outline" onClick={handleDownloadTemplate}>
+                <Download className="mr-2 h-4 w-4" />
+                下载模板
+              </Button>
+              <input
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={handleFileChange}
+                className="hidden"
+                id="file-upload"
+              />
+              <Label htmlFor="file-upload" className="cursor-pointer">
+                <Button variant="outline" asChild>
+                  <span>
+                    <Upload className="mr-2 h-4 w-4" />
+                    选择文件
+                  </span>
+                </Button>
+              </Label>
+              {importFile && (
+                <span className="text-sm text-muted-foreground">
+                  已选择: {importFile.name}
+                </span>
+              )}
+            </div>
+
+            {/* 预览表格 */}
+            {importPreview.length > 0 && (
+              <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>数据预览 ({importPreview.length} 条数据)</Label>
+                </div>
+              <div className="rounded-md border max-h-96 overflow-auto">
+                <Table>
+                  <TableHeader className="sticky top-0 bg-background">
+                    <TableRow>
+                      {Object.keys(importPreview[0] || {}).map((key) => (
+                        <TableHead key={key}>{key}</TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {importPreview.slice(0, 10).map((row, index) => (
+                      <TableRow key={index}>
+                        {Object.values(row).map((value, idx) => (
+                        <TableCell key={idx}>{String(value)}</TableCell>
+                        ))}
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {importPreview.length > 10 && (
+                  <div className="p-4 text-center text-sm text-muted-foreground">
+                    仅显示前 10 条，共 {importPreview.length} 条数据
+                  </div>
+                )}
+              </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter className="flex justify-between">
+            <Button variant="outline" onClick={() => {
+              setImportDialogOpen(false);
+              setImportFile(null);
+              setImportPreview([]);
+            }}>
+              取消
+            </Button>
+            <Button onClick={handleImport} disabled={importPreview.length === 0}>
+              <Upload className="mr-2 h-4 w-4" />
+              确认导入
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
