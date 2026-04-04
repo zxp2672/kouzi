@@ -182,7 +182,15 @@ echo "[提示] 按 Ctrl+C 可停止服务"
 echo ""
 
 cd "$(dirname "$0")"
-pnpm start
+
+# 智能检测启动方式
+if [ -f ".next/standalone/server.js" ]; then
+    echo "[信息] 检测到 standalone 模式"
+    node .next/standalone/server.js
+else
+    echo "[信息] 使用标准模式"
+    pnpm start
+fi
 EOF
 chmod +x "start.sh"
 
