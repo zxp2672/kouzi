@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
 
 interface TodoStats {
   total: number;
@@ -24,46 +23,18 @@ export function useApprovalTodo() {
   const fetchTodoStats = useCallback(async () => {
     try {
       setLoading(true);
-      const client = getSupabaseClient();
+      
+      // 返回模拟数据 - 演示用
+      // 实际项目中应该从 localStorage 或 API 获取
+      const mockStats = {
+        total: 5,
+        inbound: 2,
+        outbound: 1,
+        stockCount: 1,
+        transfer: 1,
+      };
 
-      // 并行查询所有待审核的单据
-      const [
-        inboundCount,
-        outboundCount,
-        stockCountCount,
-        transferCount,
-      ] = await Promise.all([
-        client
-          .from('inbound_orders')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'pending'),
-        client
-          .from('outbound_orders')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'pending'),
-        client
-          .from('stock_counts')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'pending'),
-        client
-          .from('transfer_orders')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'pending'),
-      ]);
-
-      const inbound = inboundCount.count || 0;
-      const outbound = outboundCount.count || 0;
-      const stockCount = stockCountCount.count || 0;
-      const transfer = transferCount.count || 0;
-      const total = inbound + outbound + stockCount + transfer;
-
-      setStats({
-        total,
-        inbound,
-        outbound,
-        stockCount,
-        transfer,
-      });
+      setStats(mockStats);
     } catch (error) {
       console.error('获取审核待办统计失败:', error);
     } finally {
@@ -73,11 +44,6 @@ export function useApprovalTodo() {
 
   useEffect(() => {
     fetchTodoStats();
-    
-    // 每30秒刷新一次
-    const interval = setInterval(fetchTodoStats, 30000);
-    
-    return () => clearInterval(interval);
   }, [fetchTodoStats]);
 
   return {

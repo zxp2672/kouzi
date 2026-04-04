@@ -10,7 +10,6 @@ import {
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
 
 interface StatCardProps {
   title: string;
@@ -58,12 +57,60 @@ interface RecentActivity {
   created_at: string;
 }
 
+// 模拟的低库存商品数据
+const MOCK_LOW_STOCK: LowStockItem[] = [
+  {
+    id: 1,
+    product_code: 'CP001',
+    product_name: '防暴盾牌',
+    warehouse_name: '市局中心仓库',
+    quantity: 5,
+    min_stock: 20
+  },
+  {
+    id: 2,
+    product_code: 'CP002',
+    product_name: '对讲机',
+    warehouse_name: 'XX区分库',
+    quantity: 8,
+    min_stock: 15
+  }
+];
+
+// 模拟的最近活动数据
+const MOCK_RECENT_ACTIVITIES: RecentActivity[] = [
+  {
+    id: 1,
+    type: '入库',
+    order_no: 'IB202404001',
+    warehouse_name: '市局中心仓库',
+    status: 'pending',
+    created_at: new Date(Date.now() - 3600000).toISOString()
+  },
+  {
+    id: 2,
+    type: '出库',
+    order_no: 'OB202404001',
+    warehouse_name: 'XX区分库',
+    status: 'approved',
+    created_at: new Date(Date.now() - 7200000).toISOString()
+  },
+  {
+    id: 3,
+    type: '入库',
+    order_no: 'IB202403099',
+    warehouse_name: 'XX派出所仓库',
+    status: 'completed',
+    created_at: new Date(Date.now() - 86400000).toISOString()
+  }
+];
+
 export default function DashboardPage() {
   const [stats, setStats] = useState({
-    totalProducts: 0,
-    totalWarehouses: 0,
-    totalStock: 0,
-    lowStockItems: 0,
+    totalProducts: 156,
+    totalWarehouses: 3,
+    totalStock: 2458,
+    lowStockItems: 2,
   });
   const [lowStockList, setLowStockList] = useState<LowStockItem[]>([]);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
@@ -75,90 +122,14 @@ export default function DashboardPage() {
 
   const fetchDashboardData = async () => {
     try {
-      const client = getSupabaseClient();
-
-      // 获取统计数据
-      const [
-        productsCount,
-        warehousesCount,
-        inventoryTotal,
-        lowStockItems
-      ] = await Promise.all([
-        client.from('products').select('*', { count: 'exact', head: true }),
-        client.from('warehouses').select('*', { count: 'exact', head: true }),
-        client.from('inventory').select('quantity'),
-        client
-          .from('inventory')
-          .select('*, products(*), warehouses(*)')
-          .lt('quantity', 'products.min_stock')
-          .limit(5)
-      ]);
-
-      // 计算总库存
-      const totalStock = inventoryTotal.data?.reduce((sum, item) => sum + (item.quantity || 0), 0) || 0;
-
-      setStats({
-        totalProducts: productsCount.count || 0,
-        totalWarehouses: warehousesCount.count || 0,
-        totalStock,
-        lowStockItems: lowStockItems.data?.length || 0,
-      });
-
-      setLowStockList(
-        lowStockItems.data?.map((item: {
-          id: number;
-          products?: { code: string; name: string; min_stock: number };
-          warehouses?: { name: string };
-          quantity: number;
-        }) => ({
-          id: item.id,
-          product_code: item.products?.code || '',
-          product_name: item.products?.name || '',
-          warehouse_name: item.warehouses?.name || '',
-          quantity: item.quantity || 0,
-          min_stock: item.products?.min_stock || 0,
-        })) || []
-      );
-
-      // 获取最近活动（入库和出库单）
-      const { data: inboundOrders } = await client
-        .from('inbound_orders')
-        .select('*, warehouses(*)')
-        .order('created_at', { ascending: false })
-        .limit(3);
-
-      const { data: outboundOrders } = await client
-        .from('outbound_orders')
-        .select('*, warehouses(*)')
-        .order('created_at', { ascending: false })
-        .limit(3);
-
-      const activities = [
-        ...(inboundOrders || []).map((order: {
-          id: number;
-          order_no: string;
-          warehouses?: { name: string };
-          status: string;
-          created_at: string;
-        }) => ({
-          ...order,
-          type: '入库',
-          warehouse_name: order.warehouses?.name || '',
-        })),
-        ...(outboundOrders || []).map((order: {
-          id: number;
-          order_no: string;
-          warehouses?: { name: string };
-          status: string;
-          created_at: string;
-        }) => ({
-          ...order,
-          type: '出库',
-          warehouse_name: order.warehouses?.name || '',
-        })),
-      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 5);
-
-      setRecentActivities(activities);
+      setLoading(true);
+      
+      // 模拟网络延迟
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // 使用模拟数据
+      setLowStockList(MOCK_LOW_STOCK);
+      setRecentActivities(MOCK_RECENT_ACTIVITIES);
     } catch (error) {
       console.error('获取仪表盘数据失败:', error);
     } finally {
@@ -190,7 +161,7 @@ export default function DashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">库存看板</h1>
-        <p className="text-muted-foreground mt-2">实时监控库存状况和业务动态</p>
+        <p className="text-muted-foreground mt-2">实时监控库存状况和业务动态（演示数据）</p>
       </div>
 
       {/* 统计卡片 */}
