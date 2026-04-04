@@ -396,3 +396,60 @@ export const approvalRecords = pgTable(
     index("approval_records_approver_id_idx").on(table.approver_id),
   ]
 );
+
+// 组织架构表（支持多级结构）
+export const organizations = pgTable(
+  "organizations",
+  {
+    id: serial().primaryKey(),
+    code: varchar("code", { length: 50 }).notNull().unique(),
+    name: varchar("name", { length: 200 }).notNull(),
+    type: varchar("type", { length: 50 }).notNull(), // 组织类型：公安局机关、公安处机关、所队
+    level: integer("level").notNull(), // 组织层级：1-公安局机关, 2-公安处机关, 3-所队
+    parent_id: integer("parent_id"), // 父组织ID，顶级组织为null
+    path: varchar("path", { length: 500 }), // 路径，如"1.2.3"格式，便于查询下级
+    sort_order: integer("sort_order").default(0),
+    is_active: boolean("is_active").default(true).notNull(),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updated_at: timestamp("updated_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("organizations_code_idx").on(table.code),
+    index("organizations_type_idx").on(table.type),
+    index("organizations_level_idx").on(table.level),
+    index("organizations_parent_id_idx").on(table.parent_id),
+    index("organizations_path_idx").on(table.path),
+    index("organizations_is_active_idx").on(table.is_active),
+  ]
+);
+
+// 用户组织关联表
+export const userOrganizations = pgTable(
+  "user_organizations",
+  {
+    id: serial().primaryKey(),
+    user_id: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    organization_id: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    is_default: boolean("is_default").default(false),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("user_organizations_user_id_idx").on(table.user_id),
+    index("user_organizations_organization_id_idx").on(table.organization_id),
+  ]
+);
+
+// 仓库组织关联表
+export const warehouseOrganizations = pgTable(
+  "warehouse_organizations",
+  {
+    id: serial().primaryKey(),
+    warehouse_id: integer("warehouse_id").notNull().references(() => warehouses.id, { onDelete: "cascade" }),
+    organization_id: integer("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+    created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    index("warehouse_organizations_warehouse_id_idx").on(table.warehouse_id),
+    index("warehouse_organizations_organization_id_idx").on(table.organization_id),
+  ]
+);

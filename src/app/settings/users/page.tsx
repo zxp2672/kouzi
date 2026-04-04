@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Search, User, Building2, Shield } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, User, Building2, Shield, Landmark } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -55,6 +55,16 @@ interface Warehouse {
   name: string;
 }
 
+interface Organization {
+  id: number;
+  code: string;
+  name: string;
+  type: string;
+  level: number;
+  parent_id: number | null;
+  path: string | null;
+}
+
 interface User {
   id: number;
   username: string;
@@ -64,6 +74,8 @@ interface User {
   role_id: number | null;
   role_name: string;
   department: string;
+  organization_id: number | null;
+  organization_name: string;
   is_active: boolean;
   warehouses: number[];
   created_at: string;
@@ -77,6 +89,7 @@ interface UserForm {
   phone: string;
   role_id: string;
   department: string;
+  organization_id: string;
   is_active: boolean;
   warehouses: number[];
 }
@@ -89,6 +102,7 @@ const initialForm: UserForm = {
   phone: '',
   role_id: '',
   department: '',
+  organization_id: '',
   is_active: true,
   warehouses: [],
 };
@@ -97,6 +111,7 @@ export default function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -125,6 +140,14 @@ export default function UserManagement() {
         .select('*')
         .eq('is_active', true);
 
+      // 获取组织架构列表
+      const { data: organizationsData } = await client
+        .from('organizations')
+        .select('*')
+        .eq('is_active', true)
+        .order('level', { ascending: true })
+        .order('sort_order', { ascending: true });
+
       // 获取用户列表
       let query = client.from('users').select('*, roles(*)').order('id', { ascending: false });
 
@@ -136,10 +159,13 @@ export default function UserManagement() {
 
       setRoles(rolesData || []);
       setWarehouses(warehousesData || []);
+      setOrganizations(organizationsData || []);
       setUsers(
         usersData?.map((user: any) => ({
           ...user,
           role_name: user.roles?.name || '未分配',
+          organization_id: null,
+          organization_name: '未分配',
           warehouses: [],
         })) || []
       );
@@ -172,6 +198,7 @@ export default function UserManagement() {
         phone: user.phone || '',
         role_id: user.role_id?.toString() || '',
         department: user.department || '',
+        organization_id: user.organization_id?.toString() || '',
         is_active: user.is_active,
         warehouses: user.warehouses || [],
       });
@@ -298,6 +325,7 @@ export default function UserManagement() {
             <TableRow>
               <TableHead>用户名</TableHead>
               <TableHead>姓名</TableHead>
+              <TableHead>所属组织</TableHead>
               <TableHead>角色</TableHead>
               <TableHead>部门</TableHead>
               <TableHead>邮箱</TableHead>
@@ -310,7 +338,7 @@ export default function UserManagement() {
           <TableBody>
             {users.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={9} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                   暂无数据
                 </TableCell>
               </TableRow>
@@ -324,6 +352,12 @@ export default function UserManagement() {
                     </div>
                   </TableCell>
                   <TableCell>{user.name}</TableCell>
+                  <TableCell>
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Landmark className="h-3 w-3" />
+                      {user.organization_name}
+                    </Badge>
+                  </TableCell>
                   <TableCell>
                     <Badge variant="outline" className="flex items-center gap-1">
                       <Shield className="h-3 w-3" />
@@ -412,6 +446,24 @@ export default function UserManagement() {
                 />
               </div>
               <div className="space-y-2">
+                <Label htmlFor="organization">所属组织</Label>
+                <Select value={form.organization_id} onValueChange={(value) => setForm({ ...form, organization_id: value })}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择组织" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">未分配</SelectItem>
+                    {organizations.map((org) => (
+                      <SelectItem key={org.id} value={org.id.toString()}>
+                        {org.name} ({org.type === 'bureau' ? '公安局机关' : org.type === 'department' ? '公安处机关' : '所队'})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
                 <Label htmlFor="role">角色</Label>
                 <Select value={form.role_id} onValueChange={(value) => setForm({ ...form, role_id: value })}>
                   <SelectTrigger>
@@ -426,8 +478,6 @@ export default function UserManagement() {
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="email">邮箱</Label>
                 <Input
@@ -438,6 +488,8 @@ export default function UserManagement() {
                   placeholder="请输入邮箱"
                 />
               </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="phone">电话</Label>
                 <Input
@@ -447,15 +499,15 @@ export default function UserManagement() {
                   placeholder="请输入电话"
                 />
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="department">部门</Label>
-              <Input
-                id="department"
-                value={form.department}
-                onChange={(e) => setForm({ ...form, department: e.target.value })}
-                placeholder="请输入部门"
-              />
+              <div className="space-y-2">
+                <Label htmlFor="department">部门</Label>
+                <Input
+                  id="department"
+                  value={form.department}
+                  onChange={(e) => setForm({ ...form, department: e.target.value })}
+                  placeholder="请输入部门"
+                />
+              </div>
             </div>
             <div className="space-y-2">
               <Label>可访问仓库</Label>
