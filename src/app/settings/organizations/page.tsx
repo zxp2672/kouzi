@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Fragment } from 'react';
 import { Plus, Pencil, Trash2, Search, Building2, ChevronRight, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -421,8 +421,8 @@ export default function OrganizationsPage() {
     const indent = level * 24;
 
     return (
-      <>
-        <TableRow key={org.id}>
+      <Fragment key={org.id}>
+        <TableRow>
           <TableCell>
             <div className="flex items-center gap-2" style={{ paddingLeft: `${indent}px` }}>
               {hasChildren && (
@@ -483,7 +483,7 @@ export default function OrganizationsPage() {
         {hasChildren && isExpanded && org.children?.map(child => 
           renderOrganizationRow(child, level + 1)
         )}
-      </>
+      </Fragment>
     );
   };
 
