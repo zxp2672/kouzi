@@ -59,13 +59,13 @@ export default function WarehouseLayout({ children }: LayoutProps) {
       {/* 侧边栏 */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-red-50 to-white dark:from-gray-900 dark:to-gray-800 border-r border-red-200 dark:border-gray-700 transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0',
+          'fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 border-r border-blue-200 dark:border-gray-700 transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0',
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         <div className="flex h-full flex-col">
           {/* Logo 和单位名称 */}
-          <div className="flex h-20 flex-col items-center justify-center border-b border-red-200 dark:border-gray-700 px-4 bg-gradient-to-r from-red-600 to-red-700">
+          <div className="flex h-20 flex-col items-center justify-center border-b border-blue-200 dark:border-gray-700 px-4 bg-gradient-to-r from-blue-600 to-blue-700">
             {config.unit_logo_url && (
               <div className="w-10 h-10 rounded-full bg-white flex items-center justify-center mb-2 shadow-md">
                 <img
@@ -78,7 +78,7 @@ export default function WarehouseLayout({ children }: LayoutProps) {
             <h1 className="text-lg font-bold text-white text-center leading-tight">
               {config.unit_name}
             </h1>
-            <p className="text-xs text-red-100 mt-1">
+            <p className="text-xs text-blue-100 mt-1">
               {config.system_title}
             </p>
             <Button
@@ -102,8 +102,8 @@ export default function WarehouseLayout({ children }: LayoutProps) {
                   className={cn(
                     'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
                     isActive
-                      ? 'bg-red-600 text-white shadow-md'
-                      : 'text-gray-700 hover:bg-red-50 hover:text-red-700 dark:text-gray-300 dark:hover:bg-gray-700'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'text-gray-700 hover:bg-blue-50 hover:text-blue-700 dark:text-gray-300 dark:hover:bg-gray-700'
                   )}
                   onClick={() => setSidebarOpen(false)}
                 >
@@ -115,7 +115,7 @@ export default function WarehouseLayout({ children }: LayoutProps) {
           </nav>
 
           {/* 底部设置 */}
-          <div className="border-t border-red-200 dark:border-gray-700 p-4">
+          <div className="border-t border-blue-200 dark:border-gray-700 p-4">
             <Link
               href="/settings"
               className={cn(
@@ -136,20 +136,20 @@ export default function WarehouseLayout({ children }: LayoutProps) {
       {/* 主内容区域 */}
       <div className="flex flex-1 flex-col overflow-hidden">
         {/* 顶部栏 */}
-        <header className="flex h-16 items-center justify-between border-b border-red-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 lg:px-6">
+        <header className="flex h-16 items-center justify-between border-b border-blue-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 lg:px-6">
           <Button
             variant="ghost"
             size="icon"
             className="lg:hidden"
             onClick={() => setSidebarOpen(true)}
           >
-            <Menu className="h-5 w-5 text-red-600" />
+            <Menu className="h-5 w-5 text-blue-600" />
           </Button>
           
           {/* 顶部单位标识 */}
           <div className="flex items-center gap-3">
             {config.unit_logo_url && (
-              <div className="w-8 h-8 rounded-full bg-red-100 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
                 <img
                   src={config.unit_logo_url}
                   alt="Logo"
@@ -178,12 +178,12 @@ export default function WarehouseLayout({ children }: LayoutProps) {
         </header>
 
         {/* 内容区域 */}
-        <main className="flex-1 overflow-y-auto p-4 lg:p-6 bg-gradient-to-br from-gray-50 to-red-50/30 dark:from-gray-900 dark:to-gray-800">
+        <main className="flex-1 overflow-y-auto p-4 lg:p-6 bg-gradient-to-br from-gray-50 to-blue-50/30 dark:from-gray-900 dark:to-gray-800">
           {children}
         </main>
         
         {/* 页脚 */}
-        <footer className="border-t border-red-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-3 px-4 lg:px-6">
+        <footer className="border-t border-blue-200 dark:border-gray-700 bg-white dark:bg-gray-800 py-3 px-4 lg:px-6">
           <p className="text-center text-xs text-gray-500 dark:text-gray-400">
             {config.copyright_text}
           </p>

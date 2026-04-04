@@ -29,7 +29,7 @@ export function ApprovalTodoBadge() {
       <PopoverTrigger asChild>
         <Link href="/approvals">
           <Button variant="ghost" size="icon" className="relative">
-            <Bell className="h-5 w-5 text-red-600" />
+            <Bell className="h-5 w-5 text-blue-600" />
             <Badge 
               variant="destructive" 
               className="absolute -top-1 -right-1 h-5 min-w-5 flex items-center justify-center p-0 text-[10px] rounded-full"
@@ -43,7 +43,7 @@ export function ApprovalTodoBadge() {
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="font-semibold flex items-center gap-2">
-              <FileCheck className="h-4 w-4 text-red-600" />
+              <FileCheck className="h-4 w-4 text-blue-600" />
               审核待办
             </h3>
             <span className="text-sm text-muted-foreground">
@@ -52,9 +52,9 @@ export function ApprovalTodoBadge() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Link href="/approvals" className="block">
-              <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer">
+              <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-blue-50 hover:border-blue-200 transition-colors cursor-pointer">
                 <div className="flex items-center gap-2">
-                  <ArrowDownToLine className="h-4 w-4 text-red-600" />
+                  <ArrowDownToLine className="h-4 w-4 text-blue-600" />
                   <span className="text-sm font-medium">入库单</span>
                 </div>
                 {stats.inbound > 0 && (
@@ -65,9 +65,9 @@ export function ApprovalTodoBadge() {
               </div>
             </Link>
             <Link href="/approvals" className="block">
-              <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer">
+              <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-blue-50 hover:border-blue-200 transition-colors cursor-pointer">
                 <div className="flex items-center gap-2">
-                  <ArrowUpFromLine className="h-4 w-4 text-red-600" />
+                  <ArrowUpFromLine className="h-4 w-4 text-blue-600" />
                   <span className="text-sm font-medium">出库单</span>
                 </div>
                 {stats.outbound > 0 && (
@@ -78,9 +78,9 @@ export function ApprovalTodoBadge() {
               </div>
             </Link>
             <Link href="/approvals" className="block">
-              <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer">
+              <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-blue-50 hover:border-blue-200 transition-colors cursor-pointer">
                 <div className="flex items-center gap-2">
-                  <ClipboardCheck className="h-4 w-4 text-red-600" />
+                  <ClipboardCheck className="h-4 w-4 text-blue-600" />
                   <span className="text-sm font-medium">盘点单</span>
                 </div>
                 {stats.stockCount > 0 && (
@@ -91,9 +91,9 @@ export function ApprovalTodoBadge() {
               </div>
             </Link>
             <Link href="/approvals" className="block">
-              <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer">
+              <div className="flex items-center justify-between p-3 rounded-lg border hover:bg-blue-50 hover:border-blue-200 transition-colors cursor-pointer">
                 <div className="flex items-center gap-2">
-                  <ArrowLeftRight className="h-4 w-4 text-red-600" />
+                  <ArrowLeftRight className="h-4 w-4 text-blue-600" />
                   <span className="text-sm font-medium">调拨单</span>
                 </div>
                 {stats.transfer > 0 && (
@@ -106,7 +106,7 @@ export function ApprovalTodoBadge() {
           </div>
           <div className="pt-2 border-t">
             <Link href="/approvals">
-              <Button variant="ghost" className="w-full text-red-600 hover:text-red-700 hover:bg-red-50">
+              <Button variant="ghost" className="w-full text-blue-600 hover:text-blue-700 hover:bg-blue-50">
                 查看全部审核
               </Button>
             </Link>
