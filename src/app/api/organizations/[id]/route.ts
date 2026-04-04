@@ -2,11 +2,8 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
-interface Params {
-  params: { id: string };
-}
-
-export async function GET(request: Request, { params }: Params) {
+export async function GET(request: Request, context: any) {
+  const params = await context.params;
   try {
     const client = getSupabaseClient();
     const { data, error } = await client
@@ -27,7 +24,8 @@ export async function GET(request: Request, { params }: Params) {
   }
 }
 
-export async function PUT(request: Request, { params }: Params) {
+export async function PUT(request: Request, context: any) {
+  const params = await context.params;
   try {
     const body = await request.json();
     const client = getSupabaseClient();
@@ -51,7 +49,8 @@ export async function PUT(request: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(request: Request, { params }: Params) {
+export async function DELETE(request: Request, context: any) {
+  const params = await context.params;
   try {
     const client = getSupabaseClient();
     

@@ -1,5 +1,4 @@
-
-const API_BASE = '/api';
+import { getSupabaseClient } from '@/storage/database/supabase-client';
 
 export interface Product {
   id: number;
@@ -11,7 +10,7 @@ export interface Product {
   barcode: string | null;
   purchase_price: string | null;
   selling_price: string | null;
-  min_stock: number;
+  min_stock: number | null;
   max_stock: number | null;
   is_active: boolean;
   created_at: string;
@@ -25,358 +24,346 @@ export interface ProductFormData {
   unit: string;
   specification?: string;
   barcode?: string;
-  purchase_price?: string;
-  selling_price?: string;
+  purchase_price?: number;
+  selling_price?: number;
   min_stock?: number;
   max_stock?: number;
   is_active: boolean;
 }
 
-const DEFAULT_PRODUCTS: Product[] = [
-  {
-    id: 1,
-    code: 'PRD001',
-    name: '防暴盾牌',
-    category: '防护装备',
-    unit: '个',
-    specification: '100*50cm',
-    barcode: '6901234567890',
-    purchase_price: '150.00',
-    selling_price: '200.00',
-    min_stock: 10,
-    max_stock: 100,
-    is_active: true,
+const mockProducts: Product[] = [
+  { 
+    id: 1, 
+    code: 'PRD001', 
+    name: '对讲机', 
+    category: '通讯设备', 
+    unit: '台', 
+    specification: '数字对讲机', 
+    barcode: '6901234567890', 
+    purchase_price: '200.00', 
+    selling_price: '300.00', 
+    min_stock: 10, 
+    max_stock: 200, 
+    is_active: true, 
     created_at: new Date().toISOString(),
-    updated_at: null,
+    updated_at: null
   },
-  {
-    id: 2,
-    code: 'PRD002',
-    name: '防刺服',
-    category: '防护装备',
-    unit: '件',
-    specification: 'L号',
-    barcode: '6901234567891',
-    purchase_price: '300.00',
-    selling_price: '400.00',
-    min_stock: 5,
-    max_stock: 50,
-    is_active: true,
+  { 
+    id: 2, 
+    code: 'PRD002', 
+    name: '警棍', 
+    category: '防暴器材', 
+    unit: '根', 
+    specification: '伸缩警棍', 
+    barcode: '6901234567891', 
+    purchase_price: '30.00', 
+    selling_price: '50.00', 
+    min_stock: 50, 
+    max_stock: 500, 
+    is_active: true, 
     created_at: new Date().toISOString(),
-    updated_at: null,
+    updated_at: null
   },
-  {
-    id: 3,
-    code: 'PRD003',
-    name: '防割手套',
-    category: '防护装备',
-    unit: '双',
-    specification: '均码',
-    barcode: '6901234567892',
-    purchase_price: '50.00',
-    selling_price: '80.00',
-    min_stock: 20,
-    max_stock: 200,
-    is_active: true,
+  { 
+    id: 3, 
+    code: 'PRD003', 
+    name: '防刺服', 
+    category: '防护装备', 
+    unit: '件', 
+    specification: '三级防刺', 
+    barcode: '6901234567892', 
+    purchase_price: '150.00', 
+    selling_price: '200.00', 
+    min_stock: 20, 
+    max_stock: 100, 
+    is_active: true, 
     created_at: new Date().toISOString(),
-    updated_at: null,
-  },
-  {
-    id: 4,
-    code: 'PRD004',
-    name: '警用强光手电',
-    category: '装备器材',
-    unit: '把',
-    specification: '2000流明',
-    barcode: '6901234567893',
-    purchase_price: '120.00',
-    selling_price: '180.00',
-    min_stock: 15,
-    max_stock: 100,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: null,
-  },
-  {
-    id: 5,
-    code: 'PRD005',
-    name: '警戒带',
-    category: '警示器材',
-    unit: '卷',
-    specification: '100米/卷',
-    barcode: '6901234567894',
-    purchase_price: '30.00',
-    selling_price: '50.00',
-    min_stock: 30,
-    max_stock: 300,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: null,
+    updated_at: null
   },
 ];
 
-async function isApiAvailable(): Promise&lt;boolean&gt; {
+async function isSupabaseAvailable(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE}/health`);
-    return response.ok;
+    getSupabaseClient();
+    return true;
   } catch {
     return false;
   }
 }
 
-export async function fetchProducts(): Promise&lt;Product[]&gt; {
-  const hasApi = await isApiAvailable();
+export async function fetchProducts(): Promise<Product[]> {
+  const hasSupabase = await isSupabaseAvailable();
   
-  if (!hasApi) {
+  if (!hasSupabase) {
+    // Fallback to localStorage
     try {
       const saved = localStorage.getItem('products');
       if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.products || DEFAULT_PRODUCTS;
+        return JSON.parse(saved);
       }
-      localStorage.setItem('products', JSON.stringify({ products: DEFAULT_PRODUCTS, nextId: 6 }));
-      return DEFAULT_PRODUCTS;
+      localStorage.setItem('products', JSON.stringify(mockProducts));
+      return mockProducts;
     } catch {
-      return DEFAULT_PRODUCTS;
+      return mockProducts;
     }
   }
 
   try {
-    const response = await fetch(`${API_BASE}/products`);
-    if (!response.ok) {
-      throw new Error('API request failed');
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('products')
+      .select('*')
+      .order('code', { ascending: true });
+
+    if (error) {
+      console.warn('Supabase fetch failed, falling back to localStorage:', error);
+      // Fallback to localStorage
+      try {
+        const saved = localStorage.getItem('products');
+        if (saved) {
+          return JSON.parse(saved);
+        }
+        localStorage.setItem('products', JSON.stringify(mockProducts));
+        return mockProducts;
+      } catch {
+        return mockProducts;
+      }
     }
-    return await response.json();
+
+    return (data as Product[]) || [];
   } catch (error) {
-    console.warn('API not available, using localStorage:', error);
+    console.warn('Supabase not available, using localStorage:', error);
+    // Fallback to localStorage
     try {
       const saved = localStorage.getItem('products');
       if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.products || DEFAULT_PRODUCTS;
+        return JSON.parse(saved);
       }
-      localStorage.setItem('products', JSON.stringify({ products: DEFAULT_PRODUCTS, nextId: 6 }));
-      return DEFAULT_PRODUCTS;
+      localStorage.setItem('products', JSON.stringify(mockProducts));
+      return mockProducts;
     } catch {
-      return DEFAULT_PRODUCTS;
+      return mockProducts;
     }
   }
 }
 
-export async function createProduct(product: ProductFormData): Promise&lt;Product&gt; {
-  const hasApi = await isApiAvailable();
+export async function createProduct(product: ProductFormData): Promise<Product> {
+  const hasSupabase = await isSupabaseAvailable();
   
-  if (!hasApi) {
+  if (!hasSupabase) {
+    // Fallback to localStorage
     const allProducts = await fetchProducts();
-    const saved = localStorage.getItem('products');
-    let nextId = 6;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        nextId = parsed.nextId || nextId;
-      } catch {
-        // ignore
-      }
-    }
-    
     const newProduct: Product = {
       ...product,
-      id: nextId,
+      id: Date.now(),
+      purchase_price: product.purchase_price?.toString() || null,
+      selling_price: product.selling_price?.toString() || null,
+      min_stock: product.min_stock || null,
+      max_stock: product.max_stock || null,
       category: product.category || null,
       specification: product.specification || null,
       barcode: product.barcode || null,
-      purchase_price: product.purchase_price || null,
-      selling_price: product.selling_price || null,
-      min_stock: product.min_stock || 0,
-      max_stock: product.max_stock || null,
       created_at: new Date().toISOString(),
       updated_at: null
     };
-    
     const updated = [...allProducts, newProduct];
-    localStorage.setItem('products', JSON.stringify({ products: updated, nextId: nextId + 1 }));
+    localStorage.setItem('products', JSON.stringify(updated));
     return newProduct;
   }
 
   try {
-    const response = await fetch(`${API_BASE}/products`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(product),
-    });
-    
-    if (!response.ok) {
-      throw new Error('API request failed');
-    }
-    
-    return await response.json();
-  } catch (error) {
-    console.warn('API not available, using localStorage:', error);
-    const allProducts = await fetchProducts();
-    const saved = localStorage.getItem('products');
-    let nextId = 6;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        nextId = parsed.nextId || nextId;
-      } catch {
-        // ignore
-      }
-    }
-    
-    const newProduct: Product = {
+    const client = getSupabaseClient();
+    const now = new Date().toISOString();
+    const productToInsert = {
       ...product,
-      id: nextId,
+      purchase_price: product.purchase_price?.toString(),
+      selling_price: product.selling_price?.toString(),
       category: product.category || null,
       specification: product.specification || null,
       barcode: product.barcode || null,
-      purchase_price: product.purchase_price || null,
-      selling_price: product.selling_price || null,
-      min_stock: product.min_stock || 0,
+      created_at: now,
+      updated_at: now
+    };
+
+    const { data, error } = await client
+      .from('products')
+      .insert(productToInsert)
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Supabase create failed, falling back to localStorage:', error);
+      // Fallback to localStorage
+      const allProducts = await fetchProducts();
+      const newProduct: Product = {
+        ...product,
+        id: Date.now(),
+        purchase_price: product.purchase_price?.toString() || null,
+        selling_price: product.selling_price?.toString() || null,
+        min_stock: product.min_stock || null,
+        max_stock: product.max_stock || null,
+        category: product.category || null,
+        specification: product.specification || null,
+        barcode: product.barcode || null,
+        created_at: new Date().toISOString(),
+        updated_at: null
+      };
+      const updated = [...allProducts, newProduct];
+      localStorage.setItem('products', JSON.stringify(updated));
+      return newProduct;
+    }
+
+    return data as Product;
+  } catch (error) {
+    console.warn('Supabase not available, using localStorage:', error);
+    // Fallback to localStorage
+    const allProducts = await fetchProducts();
+    const newProduct: Product = {
+      ...product,
+      id: Date.now(),
+      purchase_price: product.purchase_price?.toString() || null,
+      selling_price: product.selling_price?.toString() || null,
+      min_stock: product.min_stock || null,
       max_stock: product.max_stock || null,
+      category: product.category || null,
+      specification: product.specification || null,
+      barcode: product.barcode || null,
       created_at: new Date().toISOString(),
       updated_at: null
     };
-    
     const updated = [...allProducts, newProduct];
-    localStorage.setItem('products', JSON.stringify({ products: updated, nextId: nextId + 1 }));
+    localStorage.setItem('products', JSON.stringify(updated));
     return newProduct;
   }
 }
 
-export async function updateProduct(id: number, product: ProductFormData): Promise&lt;Product&gt; {
-  const hasApi = await isApiAvailable();
+export async function updateProduct(id: number, product: ProductFormData): Promise<Product> {
+  const hasSupabase = await isSupabaseAvailable();
   
-  if (!hasApi) {
+  if (!hasSupabase) {
+    // Fallback to localStorage
     const allProducts = await fetchProducts();
-    const updatedProducts = allProducts.map(p =&gt; 
+    const updatedProducts = allProducts.map(p => 
       p.id === id ? { 
         ...p, 
-        ...product,
-        category: product.category !== undefined ? product.category : p.category,
-        specification: product.specification !== undefined ? product.specification : p.specification,
-        barcode: product.barcode !== undefined ? product.barcode : p.barcode,
-        purchase_price: product.purchase_price !== undefined ? product.purchase_price : p.purchase_price,
-        selling_price: product.selling_price !== undefined ? product.selling_price : p.selling_price,
-        min_stock: product.min_stock !== undefined ? product.min_stock : p.min_stock,
-        max_stock: product.max_stock !== undefined ? product.max_stock : p.max_stock,
-        is_active: product.is_active !== undefined ? product.is_active : p.is_active,
+        ...product, 
+        purchase_price: product.purchase_price?.toString() || null,
+        selling_price: product.selling_price?.toString() || null,
+        min_stock: product.min_stock || null,
+        max_stock: product.max_stock || null,
+        category: product.category || null,
+        specification: product.specification || null,
+        barcode: product.barcode || null,
         updated_at: new Date().toISOString()
       } : p
     );
-    
-    const saved = localStorage.getItem('products');
-    let nextId = 6;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        nextId = parsed.nextId || nextId;
-      } catch {
-        // ignore
-      }
-    }
-    
-    localStorage.setItem('products', JSON.stringify({ products: updatedProducts, nextId }));
-    const updated = updatedProducts.find(p =&gt; p.id === id);
+    localStorage.setItem('products', JSON.stringify(updatedProducts));
+    const updated = updatedProducts.find(p => p.id === id);
     if (!updated) throw new Error('Product not found');
     return updated;
   }
 
   try {
-    const response = await fetch(`${API_BASE}/products/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(product),
-    });
-    
-    if (!response.ok) {
-      throw new Error('API request failed');
+    const client = getSupabaseClient();
+    const now = new Date().toISOString();
+    const productToUpdate = {
+      ...product,
+      purchase_price: product.purchase_price?.toString(),
+      selling_price: product.selling_price?.toString(),
+      category: product.category || null,
+      specification: product.specification || null,
+      barcode: product.barcode || null,
+      updated_at: now
+    };
+
+    const { data, error } = await client
+      .from('products')
+      .update(productToUpdate)
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.warn('Supabase update failed, falling back to localStorage:', error);
+      // Fallback to localStorage
+      const allProducts = await fetchProducts();
+      const updatedProducts = allProducts.map(p => 
+        p.id === id ? { 
+          ...p, 
+          ...product, 
+          purchase_price: product.purchase_price?.toString() || null,
+          selling_price: product.selling_price?.toString() || null,
+          min_stock: product.min_stock || null,
+          max_stock: product.max_stock || null,
+          category: product.category || null,
+          specification: product.specification || null,
+          barcode: product.barcode || null,
+          updated_at: new Date().toISOString()
+        } : p
+      );
+      localStorage.setItem('products', JSON.stringify(updatedProducts));
+      const updated = updatedProducts.find(p => p.id === id);
+      if (!updated) throw new Error('Product not found');
+      return updated;
     }
-    
-    return await response.json();
+
+    return data as Product;
   } catch (error) {
-    console.warn('API not available, using localStorage:', error);
+    console.warn('Supabase not available, using localStorage:', error);
+    // Fallback to localStorage
     const allProducts = await fetchProducts();
-    const updatedProducts = allProducts.map(p =&gt; 
+    const updatedProducts = allProducts.map(p => 
       p.id === id ? { 
         ...p, 
-        ...product,
-        category: product.category !== undefined ? product.category : p.category,
-        specification: product.specification !== undefined ? product.specification : p.specification,
-        barcode: product.barcode !== undefined ? product.barcode : p.barcode,
-        purchase_price: product.purchase_price !== undefined ? product.purchase_price : p.purchase_price,
-        selling_price: product.selling_price !== undefined ? product.selling_price : p.selling_price,
-        min_stock: product.min_stock !== undefined ? product.min_stock : p.min_stock,
-        max_stock: product.max_stock !== undefined ? product.max_stock : p.max_stock,
-        is_active: product.is_active !== undefined ? product.is_active : p.is_active,
+        ...product, 
+        purchase_price: product.purchase_price?.toString() || null,
+        selling_price: product.selling_price?.toString() || null,
+        min_stock: product.min_stock || null,
+        max_stock: product.max_stock || null,
+        category: product.category || null,
+        specification: product.specification || null,
+        barcode: product.barcode || null,
         updated_at: new Date().toISOString()
       } : p
     );
-    
-    const saved = localStorage.getItem('products');
-    let nextId = 6;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        nextId = parsed.nextId || nextId;
-      } catch {
-        // ignore
-      }
-    }
-    
-    localStorage.setItem('products', JSON.stringify({ products: updatedProducts, nextId }));
-    const updated = updatedProducts.find(p =&gt; p.id === id);
+    localStorage.setItem('products', JSON.stringify(updatedProducts));
+    const updated = updatedProducts.find(p => p.id === id);
     if (!updated) throw new Error('Product not found');
     return updated;
   }
 }
 
-export async function deleteProduct(id: number): Promise&lt;void&gt; {
-  const hasApi = await isApiAvailable();
+export async function deleteProduct(id: number): Promise<void> {
+  const hasSupabase = await isSupabaseAvailable();
   
-  if (!hasApi) {
+  if (!hasSupabase) {
+    // Fallback to localStorage
     const allProducts = await fetchProducts();
-    const updated = allProducts.filter(p =&gt; p.id !== id);
-    
-    const saved = localStorage.getItem('products');
-    let nextId = 6;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        nextId = parsed.nextId || nextId;
-      } catch {
-        // ignore
-      }
-    }
-    
-    localStorage.setItem('products', JSON.stringify({ products: updated, nextId }));
+    const updated = allProducts.filter(p => p.id !== id);
+    localStorage.setItem('products', JSON.stringify(updated));
     return;
   }
 
   try {
-    const response = await fetch(`${API_BASE}/products/${id}`, {
-      method: 'DELETE',
-    });
-    
-    if (!response.ok) {
-      throw new Error('API request failed');
+    const client = getSupabaseClient();
+    const { error } = await client
+      .from('products')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.warn('Supabase delete failed, falling back to localStorage:', error);
+      // Fallback to localStorage
+      const allProducts = await fetchProducts();
+      const updated = allProducts.filter(p => p.id !== id);
+      localStorage.setItem('products', JSON.stringify(updated));
+      return;
     }
   } catch (error) {
-    console.warn('API not available, using localStorage:', error);
+    console.warn('Supabase not available, using localStorage:', error);
+    // Fallback to localStorage
     const allProducts = await fetchProducts();
-    const updated = allProducts.filter(p =&gt; p.id !== id);
-    
-    const saved = localStorage.getItem('products');
-    let nextId = 6;
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        nextId = parsed.nextId || nextId;
-      } catch {
-        // ignore
-      }
-    }
-    
-    localStorage.setItem('products', JSON.stringify({ products: updated, nextId }));
+    const updated = allProducts.filter(p => p.id !== id);
+    localStorage.setItem('products', JSON.stringify(updated));
   }
 }
