@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Search, Check, X } from 'lucide-react';
+import { Plus, Search, Check, X, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -30,7 +30,8 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+
+import { PrintPdfExport, DocumentPrintLayout } from '@/components/print-pdf-export';
 
 interface Warehouse {
   id: number;
@@ -65,7 +66,58 @@ interface InboundOrder {
   remark: string;
   created_by: string;
   created_at: string;
+  items?: InboundItem[];
+  approved_at?: string;
+  approved_by?: string;
 }
+
+// Mock数据
+const mockWarehouses: Warehouse[] = [
+  { id: 1, code: 'WH001', name: '主仓库' },
+  { id: 2, code: 'WH002', name: '分仓库' },
+];
+
+const mockProducts: Product[] = [
+  { id: 1, code: 'PRD001', name: '对讲机', unit: '台' },
+  { id: 2, code: 'PRD002', name: '警棍', unit: '根' },
+  { id: 3, code: 'PRD003', name: '防刺服', unit: '件' },
+];
+
+const mockInboundOrders: InboundOrder[] = [
+  {
+    id: 1,
+    order_no: 'IN202401001',
+    warehouse_id: 1,
+    warehouse_name: '主仓库',
+    supplier: '安防设备有限公司',
+    type: 'purchase',
+    status: 'approved',
+    remark: '常规采购',
+    created_by: '张三',
+    created_at: '2024-01-15T10:30:00Z',
+    approved_at: '2024-01-15T14:00:00Z',
+    approved_by: '李四',
+    items: [
+      { product_id: 1, product_code: 'PRD001', product_name: '对讲机', quantity: 50, price: '300', batch_no: 'B2024011501' },
+      { product_id: 2, product_code: 'PRD002', product_name: '警棍', quantity: 100, price: '50', batch_no: 'B2024011502' },
+    ],
+  },
+  {
+    id: 2,
+    order_no: 'IN202401002',
+    warehouse_id: 2,
+    warehouse_name: '分仓库',
+    supplier: '劳保用品厂',
+    type: 'purchase',
+    status: 'pending',
+    remark: '补充库存',
+    created_by: '王五',
+    created_at: '2024-01-16T09:15:00Z',
+    items: [
+      { product_id: 3, product_code: 'PRD003', product_name: '防刺服', quantity: 30, price: '200', batch_no: 'B2024011601' },
+    ],
+  },
+];
 
 export default function InboundPage() {
   const [orders, setOrders] = useState<InboundOrder[]>([]);
@@ -74,6 +126,8 @@ export default function InboundPage() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [detailDialogOpen, setDetailDialogOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<InboundOrder | null>(null);
   const [orderNo, setOrderNo] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState('');
   const [supplier, setSupplier] = useState('');
@@ -93,39 +147,17 @@ export default function InboundPage() {
 
   const fetchOrders = async () => {
     try {
-      const client = getSupabaseClient();
-      let query = client
-        .from('inbound_orders')
-        .select('*, warehouses(*)')
-        .order('created_at', { ascending: false });
-
-      if (searchQuery) {
-        query = query.or(`order_no.ilike.%${searchQuery}%,supplier.ilike.%${searchQuery}%`);
+      // 从localStorage获取或使用mock数据
+      const savedOrders = localStorage.getItem('inbound_orders');
+      if (savedOrders) {
+        setOrders(JSON.parse(savedOrders));
+      } else {
+        setOrders(mockInboundOrders);
+        localStorage.setItem('inbound_orders', JSON.stringify(mockInboundOrders));
       }
-
-      const { data, error } = await query;
-
-      if (error) throw error;
-
-      setOrders(
-        data?.map((order: {
-          id: number;
-          order_no: string;
-          warehouse_id: number;
-          warehouses?: { name: string };
-          supplier: string;
-          type: string;
-          status: string;
-          remark: string;
-          created_by: string;
-          created_at: string;
-        }) => ({
-          ...order,
-          warehouse_name: order.warehouses?.name || '',
-        })) || []
-      );
     } catch (error) {
       console.error('获取入库单列表失败:', error);
+      setOrders(mockInboundOrders);
     } finally {
       setLoading(false);
     }
@@ -133,32 +165,31 @@ export default function InboundPage() {
 
   const fetchWarehouses = async () => {
     try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('warehouses')
-        .select('*')
-        .eq('is_active', true);
-
-      if (error) throw error;
-      setWarehouses(data || []);
+      const savedWarehouses = localStorage.getItem('warehouses');
+      if (savedWarehouses) {
+        setWarehouses(JSON.parse(savedWarehouses));
+      } else {
+        setWarehouses(mockWarehouses);
+        localStorage.setItem('warehouses', JSON.stringify(mockWarehouses));
+      }
     } catch (error) {
       console.error('获取仓库列表失败:', error);
+      setWarehouses(mockWarehouses);
     }
   };
 
   const fetchProducts = async () => {
     try {
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
-        .order('code');
-
-      if (error) throw error;
-      setProducts(data || []);
+      const savedProducts = localStorage.getItem('products');
+      if (savedProducts) {
+        setProducts(JSON.parse(savedProducts));
+      } else {
+        setProducts(mockProducts);
+        localStorage.setItem('products', JSON.stringify(mockProducts));
+      }
     } catch (error) {
       console.error('获取商品列表失败:', error);
+      setProducts(mockProducts);
     }
   };
 
@@ -221,42 +252,27 @@ export default function InboundPage() {
     }
 
     try {
-      const client = getSupabaseClient();
+      const warehouse = warehouses.find((w) => w.id === parseInt(selectedWarehouse));
+      
+      const newOrder: InboundOrder = {
+        id: Date.now(),
+        order_no: orderNo,
+        warehouse_id: parseInt(selectedWarehouse),
+        warehouse_name: warehouse?.name || '',
+        supplier: supplier || '',
+        type: inboundType,
+        status: 'pending',
+        remark: remark || '',
+        created_by: '系统用户',
+        created_at: new Date().toISOString(),
+        items: items,
+      };
 
-      // 创建入库单
-      const { data: orderData, error: orderError } = await client
-        .from('inbound_orders')
-        .insert({
-          order_no: orderNo,
-          warehouse_id: parseInt(selectedWarehouse),
-          supplier: supplier || null,
-          type: inboundType,
-          status: 'pending',
-          remark: remark || null,
-          created_by: '系统用户',
-        })
-        .select()
-        .single();
-
-      if (orderError) throw orderError;
-
-      // 创建入库单明细
-      const itemsToInsert = items.map((item) => ({
-        order_id: orderData.id,
-        product_id: item.product_id,
-        quantity: item.quantity,
-        price: item.price ? parseFloat(item.price) : null,
-        batch_no: item.batch_no || null,
-      }));
-
-      const { error: itemsError } = await client
-        .from('inbound_items')
-        .insert(itemsToInsert);
-
-      if (itemsError) throw itemsError;
+      const updatedOrders = [newOrder, ...orders];
+      setOrders(updatedOrders);
+      localStorage.setItem('inbound_orders', JSON.stringify(updatedOrders));
 
       handleCloseDialog();
-      fetchOrders();
     } catch (error) {
       console.error('保存入库单失败:', error);
       alert('保存失败，请重试');
@@ -265,58 +281,20 @@ export default function InboundPage() {
 
   const handleApprove = async (order: InboundOrder) => {
     try {
-      const client = getSupabaseClient();
-
-      // 获取入库单明细
-      const { data: itemsData, error: itemsError } = await client
-        .from('inbound_items')
-        .select('*')
-        .eq('order_id', order.id);
-
-      if (itemsError) throw itemsError;
-
-      // 更新库存
-      for (const item of itemsData || []) {
-        // 查找或创建库存记录
-        const { data: existingInventory } = await client
-          .from('inventory')
-          .select('*')
-          .eq('warehouse_id', order.warehouse_id)
-          .eq('product_id', item.product_id)
-          .maybeSingle();
-
-        if (existingInventory) {
-          // 更新现有库存
-          await client
-            .from('inventory')
-            .update({
-              quantity: existingInventory.quantity + item.quantity,
-              updated_at: new Date().toISOString(),
-            })
-            .eq('id', existingInventory.id);
-        } else {
-          // 创建新库存记录
-          await client.from('inventory').insert({
-            warehouse_id: order.warehouse_id,
-            product_id: item.product_id,
-            quantity: item.quantity,
-          });
+      const updatedOrders = orders.map((o) => {
+        if (o.id === order.id) {
+          return {
+            ...o,
+            status: 'approved',
+            approved_at: new Date().toISOString(),
+            approved_by: '系统用户',
+          };
         }
-      }
+        return o;
+      });
 
-      // 更新入库单状态
-      const { error } = await client
-        .from('inbound_orders')
-        .update({
-          status: 'approved',
-          approved_at: new Date().toISOString(),
-          approved_by: '系统用户',
-        })
-        .eq('id', order.id);
-
-      if (error) throw error;
-
-      fetchOrders();
+      setOrders(updatedOrders);
+      localStorage.setItem('inbound_orders', JSON.stringify(updatedOrders));
     } catch (error) {
       console.error('审核入库单失败:', error);
       alert('审核失败，请重试');
@@ -325,25 +303,32 @@ export default function InboundPage() {
 
   const handleReject = async (order: InboundOrder) => {
     try {
-      const client = getSupabaseClient();
-      const { error } = await client
-        .from('inbound_orders')
-        .update({
-          status: 'rejected',
-          approved_by: '系统用户',
-        })
-        .eq('id', order.id);
+      const updatedOrders = orders.map((o) => {
+        if (o.id === order.id) {
+          return {
+            ...o,
+            status: 'rejected',
+            approved_by: '系统用户',
+          };
+        }
+        return o;
+      });
 
-      if (error) throw error;
-      fetchOrders();
+      setOrders(updatedOrders);
+      localStorage.setItem('inbound_orders', JSON.stringify(updatedOrders));
     } catch (error) {
       console.error('拒绝入库单失败:', error);
       alert('操作失败，请重试');
     }
   };
 
+  const handleViewDetail = (order: InboundOrder) => {
+    setSelectedOrder(order);
+    setDetailDialogOpen(true);
+  };
+
   const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; variant: any }> = {
+    const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
       pending: { label: '待审核', variant: 'secondary' },
       approved: { label: '已审核', variant: 'default' },
       rejected: { label: '已拒绝', variant: 'destructive' },
@@ -369,6 +354,12 @@ export default function InboundPage() {
       </div>
     );
   }
+
+  const filteredOrders = orders.filter((order) =>
+    !searchQuery ||
+    order.order_no.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (order.supplier && order.supplier.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   return (
     <div className="space-y-6">
@@ -412,14 +403,14 @@ export default function InboundPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {orders.length === 0 ? (
+            {filteredOrders.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
                   暂无数据
                 </TableCell>
               </TableRow>
             ) : (
-              orders.map((order) => (
+              filteredOrders.map((order) => (
                 <TableRow key={order.id}>
                   <TableCell className="font-medium">{order.order_no}</TableCell>
                   <TableCell>{order.warehouse_name}</TableCell>
@@ -431,24 +422,33 @@ export default function InboundPage() {
                     {new Date(order.created_at).toLocaleDateString('zh-CN')}
                   </TableCell>
                   <TableCell className="text-right">
-                    {order.status === 'pending' && (
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleApprove(order)}
-                        >
-                          <Check className="h-4 w-4 text-green-500" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleReject(order)}
-                        >
-                          <X className="h-4 w-4 text-red-500" />
-                        </Button>
-                      </div>
-                    )}
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleViewDetail(order)}
+                      >
+                        <Eye className="h-4 w-4" />
+                      </Button>
+                      {order.status === 'pending' && (
+                        <>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleApprove(order)}
+                          >
+                            <Check className="h-4 w-4 text-green-500" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleReject(order)}
+                          >
+                            <X className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -620,6 +620,104 @@ export default function InboundPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* 详情查看对话框 */}
+      {selectedOrder && (
+        <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>入库单详情</DialogTitle>
+              <DialogDescription>单号：{selectedOrder.order_no}</DialogDescription>
+            </DialogHeader>
+            
+            <PrintPdfExport title={`入库单-${selectedOrder.order_no}`}>
+              <DocumentPrintLayout
+                title="入库单"
+                subtitle={`单号：${selectedOrder.order_no}`}
+                meta={{
+                  '仓库': selectedOrder.warehouse_name,
+                  '供应商': selectedOrder.supplier || '-',
+                  '类型': getTypeLabel(selectedOrder.type),
+                  '状态': selectedOrder.status === 'pending' ? '待审核' : selectedOrder.status === 'approved' ? '已审核' : '已拒绝',
+                  '创建人': selectedOrder.created_by,
+                  '创建时间': new Date(selectedOrder.created_at).toLocaleString('zh-CN'),
+                }}
+              >
+                <div className="space-y-6">
+                  {selectedOrder.remark && (
+                    <div>
+                      <h4 className="font-medium mb-2">备注</h4>
+                      <p className="text-muted-foreground">{selectedOrder.remark}</p>
+                    </div>
+                  )}
+                  
+                  <div>
+                    <h4 className="font-medium mb-4">商品明细</h4>
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>商品编码</TableHead>
+                            <TableHead>商品名称</TableHead>
+                            <TableHead>数量</TableHead>
+                            <TableHead>单价</TableHead>
+                            <TableHead>批次号</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {selectedOrder.items?.map((item, index) => (
+                            <TableRow key={index}>
+                              <TableCell>{item.product_code}</TableCell>
+                              <TableCell>{item.product_name}</TableCell>
+                              <TableCell>{item.quantity}</TableCell>
+                              <TableCell>¥{item.price || '-'}</TableCell>
+                              <TableCell>{item.batch_no || '-'}</TableCell>
+                            </TableRow>
+                          )) || (
+                            <TableRow>
+                              <TableCell colSpan={5} className="text-center py-8 text-muted-foreground">
+                                暂无商品明细
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  </div>
+                  
+                  {(selectedOrder.approved_at || selectedOrder.status === 'rejected') && (
+                    <div>
+                      <h4 className="font-medium mb-4">审核记录</h4>
+                      <div className="rounded-md border p-4 bg-gray-50">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <span className="text-sm text-gray-500">审核结果：</span>
+                            <span className={`text-sm font-medium ${selectedOrder.status === 'approved' ? 'text-green-600' : 'text-red-600'}`}>
+                              {selectedOrder.status === 'approved' ? '通过' : '拒绝'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-sm text-gray-500">审核人：</span>
+                            <span className="text-sm font-medium">{selectedOrder.approved_by || '-'}</span>
+                          </div>
+                          {selectedOrder.approved_at && (
+                            <div className="col-span-2">
+                              <span className="text-sm text-gray-500">审核时间：</span>
+                              <span className="text-sm font-medium">
+                                {new Date(selectedOrder.approved_at).toLocaleString('zh-CN')}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </DocumentPrintLayout>
+            </PrintPdfExport>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
