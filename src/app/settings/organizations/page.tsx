@@ -43,20 +43,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
 
-interface Organization {
-  id: number;
-  code: string;
-  name: string;
-  type: string;
-  level: number;
-  parent_id: number | null;
-  path: string | null;
-  sort_order: number;
-  is_active: boolean;
-  created_at: string;
-  updated_at: string | null;
-  children?: Organization[];
-}
+// 引入服务层
+import { 
+  Organization, 
+  OrganizationFormData, 
+  fetchOrganizations, 
+  createOrganization, 
+  updateOrganization, 
+  deleteOrganization 
+} from '@/services/organization-service';
+
+const ORGANIZATION_TYPES = [
+  { value: 'bureau', label: '公安局机关', level: 1 },
+  { value: 'department', label: '公安处机关', level: 2 },
+  { value: 'team', label: '所队', level: 3 },
+];
 
 interface OrganizationForm {
   code: string;
@@ -67,59 +68,9 @@ interface OrganizationForm {
   is_active: boolean;
 }
 
-const ORGANIZATION_TYPES = [
-  { value: 'bureau', label: '公安局机关', level: 1 },
-  { value: 'department', label: '公安处机关', level: 2 },
-  { value: 'team', label: '所队', level: 3 },
-];
-
-// 默认示例数据
-const DEFAULT_ORGANIZATIONS: Organization[] = [
-  {
-    id: 1,
-    code: 'GAJ001',
-    name: 'XX市公安局',
-    type: 'bureau',
-    level: 1,
-    parent_id: null,
-    path: null,
-    sort_order: 1,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: null,
-  },
-  {
-    id: 2,
-    code: 'GAC001',
-    name: 'XX区公安处',
-    type: 'department',
-    level: 2,
-    parent_id: 1,
-    path: '1',
-    sort_order: 1,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: null,
-  },
-  {
-    id: 3,
-    code: 'SD001',
-    name: 'XX派出所',
-    type: 'team',
-    level: 3,
-    parent_id: 2,
-    path: '1.2',
-    sort_order: 1,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: null,
-  },
-];
-
-const STORAGE_KEY = 'organizations';
-
 export default function OrganizationsPage() {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [flatOrganizations, setFlatOrganizations] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -127,7 +78,6 @@ export default function OrganizationsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingOrg, setDeletingOrg] = useState<Organization | null>(null);
   const [expandedNodes, setExpandedNodes] = useState<Set<number>>(new Set());
-  const [nextId, setNextId] = useState(4);
   const [form, setForm] = useState<OrganizationForm>({
     code: '',
     name: '',
@@ -137,47 +87,13 @@ export default function OrganizationsPage() {
     is_active: true,
   });
 
-  const getOrganizationsFromStorage = (): Organization[] => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.organizations || DEFAULT_ORGANIZATIONS;
-      }
-    } catch (error) {
-      console.error('读取组织机构数据失败:', error);
-    }
-    return DEFAULT_ORGANIZATIONS;
-  };
-
-  const saveOrganizationsToStorage = (orgs: Organization[], newNextId?: number) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        organizations: orgs,
-        nextId: newNextId || nextId
-      }));
-    } catch (error) {
-      console.error('保存组织机构数据失败:', error);
-    }
-  };
-
-  const fetchOrganizations = async () => {
+  const loadOrganizations = async () => {
     try {
       setLoading(true);
       
-      // 从 localStorage 读取数据
-      const savedData = getOrganizationsFromStorage();
-      const savedNextId = localStorage.getItem(STORAGE_KEY);
-      if (savedNextId) {
-        try {
-          const parsed = JSON.parse(savedNextId);
-          if (parsed.nextId) {
-            setNextId(parsed.nextId);
-          }
-        } catch (e) {
-          // 忽略
-        }
-      }
+      // 使用服务层获取数据
+      const savedData = await fetchOrganizations();
+      setFlatOrganizations(savedData);
       
       // 构建树形结构
       const tree = buildOrganizationTree(savedData || []);
@@ -199,12 +115,10 @@ export default function OrganizationsPage() {
     const map = new Map<number, Organization>();
     const roots: Organization[] = [];
 
-    // 首先创建所有节点
     flatList.forEach(item => {
       map.set(item.id, { ...item, children: [] });
     });
 
-    // 构建树
     flatList.forEach(item => {
       const node = map.get(item.id)!;
       if (item.parent_id === null) {
@@ -223,7 +137,7 @@ export default function OrganizationsPage() {
   };
 
   useEffect(() => {
-    fetchOrganizations();
+    loadOrganizations();
   }, []);
 
   const handleOpenDialog = (org?: Organization) => {
@@ -251,23 +165,8 @@ export default function OrganizationsPage() {
     setDialogOpen(true);
   };
 
-  const getFlatOrganizations = (): Organization[] => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.organizations || DEFAULT_ORGANIZATIONS;
-      } catch (error) {
-        console.error('读取组织数据失败:', error);
-        return DEFAULT_ORGANIZATIONS;
-      }
-    }
-    return DEFAULT_ORGANIZATIONS;
-  };
-
   const getOrganizationById = (id: number): Organization | null => {
-    const flatList = getFlatOrganizations();
-    return flatList.find(org => org.id === id) || null;
+    return flatOrganizations.find(org => org.id === id) || null;
   };
 
   const handleSave = async () => {
@@ -280,7 +179,6 @@ export default function OrganizationsPage() {
       const selectedType = ORGANIZATION_TYPES.find(t => t.value === form.type);
       const level = selectedType?.level || 1;
       
-      // 计算路径
       let path = null;
       if (form.parent_id) {
         const parentOrg = getOrganizationById(parseInt(form.parent_id));
@@ -289,55 +187,30 @@ export default function OrganizationsPage() {
         }
       }
 
-      const flatList = getFlatOrganizations();
-      
+      const formData: OrganizationFormData = {
+        code: form.code,
+        name: form.name,
+        type: form.type,
+        level: level,
+        parent_id: form.parent_id ? parseInt(form.parent_id) : undefined,
+        path: path,
+        sort_order: form.sort_order ? parseInt(form.sort_order) : undefined,
+        is_active: form.is_active,
+      };
+
       if (editingOrg) {
-        // 编辑现有组织
-        const updatedList = flatList.map(org => {
-          if (org.id === editingOrg.id) {
-            return {
-              ...org,
-              code: form.code,
-              name: form.name,
-              type: form.type,
-              level: level,
-              parent_id: form.parent_id ? parseInt(form.parent_id) : null,
-              path: path,
-              sort_order: parseInt(form.sort_order) || 0,
-              is_active: form.is_active,
-              updated_at: new Date().toISOString(),
-            };
-          }
-          return org;
-        });
-        
-        saveOrganizationsToStorage(updatedList);
+        await updateOrganization(editingOrg.id, formData);
+        toast.success('组织架构已更新');
       } else {
-        // 新增组织
-        const newOrg: Organization = {
-          id: nextId,
-          code: form.code,
-          name: form.name,
-          type: form.type,
-          level: level,
-          parent_id: form.parent_id ? parseInt(form.parent_id) : null,
-          path: path,
-          sort_order: parseInt(form.sort_order) || 0,
-          is_active: form.is_active,
-          created_at: new Date().toISOString(),
-          updated_at: null,
-        };
-        
-        const updatedList = [...flatList, newOrg];
-        saveOrganizationsToStorage(updatedList, nextId + 1);
-        setNextId(nextId + 1);
+        await createOrganization(formData);
+        toast.success('组织架构已创建');
       }
 
       setDialogOpen(false);
-      toast.success(editingOrg ? '组织已更新' : '组织已创建');
-      fetchOrganizations();
+      setEditingOrg(null);
+      loadOrganizations();
     } catch (error) {
-      console.error('保存组织失败:', error);
+      console.error('保存组织架构失败:', error);
       toast.error('保存失败，请重试');
     }
   };
@@ -346,29 +219,13 @@ export default function OrganizationsPage() {
     if (!deletingOrg) return;
 
     try {
-      const flatList = getFlatOrganizations();
-      
-      // 递归获取所有要删除的组织ID
-      const getIdsToDelete = (orgId: number): number[] => {
-        const result: number[] = [orgId];
-        const children = flatList.filter(org => org.parent_id === orgId);
-        children.forEach(child => {
-          result.push(...getIdsToDelete(child.id));
-        });
-        return result;
-      };
-      
-      const idsToDelete = getIdsToDelete(deletingOrg.id);
-      const updatedList = flatList.filter(org => !idsToDelete.includes(org.id));
-      
-      saveOrganizationsToStorage(updatedList);
-
+      await deleteOrganization(deletingOrg.id);
       setDeleteDialogOpen(false);
       setDeletingOrg(null);
-      toast.success('组织已删除');
-      fetchOrganizations();
+      toast.success('组织架构已删除');
+      loadOrganizations();
     } catch (error) {
-      console.error('删除组织失败:', error);
+      console.error('删除组织架构失败:', error);
       toast.error('删除失败，请重试');
     }
   };
@@ -384,7 +241,6 @@ export default function OrganizationsPage() {
   };
 
   const getAvailableParents = (currentOrg?: Organization | null): Organization[] => {
-    // 扁平化组织列表
     const flatten = (orgs: Organization[]): Organization[] => {
       let result: Organization[] = [];
       orgs.forEach(org => {
@@ -496,7 +352,7 @@ export default function OrganizationsPage() {
             组织架构管理
           </CardTitle>
           <CardDescription>
-            管理公安局机关、公安处机关、所队等多级组织机构，上级机关可查看管理下级数据
+            管理公安局机关、公安处机关、所队等多级组织机构，上级机关可查看管理下级数据（已迁移至 Supabase）
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -552,7 +408,6 @@ export default function OrganizationsPage() {
         </CardContent>
       </Card>
 
-      {/* 编辑对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -657,7 +512,6 @@ export default function OrganizationsPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 删除确认对话框 */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>

@@ -42,165 +42,82 @@ import {
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { toast } from 'sonner';
 
-interface User {
-  id: number;
-  username: string;
-  name: string;
-  email: string;
-  phone: string;
-  role: string;
-  organization: string;
-  is_active: boolean;
-  created_at: string;
-}
+// 引入服务层
+import { 
+  User as UserType, 
+  UserFormData, 
+  fetchUsers, 
+  createUser, 
+  updateUser, 
+  deleteUser 
+} from '@/services/user-service';
+import { fetchOrganizations } from '@/services/organization-service';
+import { fetchRoles } from '@/services/role-service';
 
 interface UserForm {
   username: string;
   name: string;
   email: string;
   phone: string;
-  role: string;
-  organization: string;
+  role_id: string;
+  organization_id: string;
   is_active: boolean;
 }
 
-// 默认角色
-const ROLES = [
-  { value: 'admin', label: '系统管理员' },
-  { value: 'manager', label: '部门管理员' },
-  { value: 'operator', label: '操作员' },
-  { value: 'viewer', label: '查看者' },
-];
-
-// 默认组织
-const ORGANIZATIONS = [
-  { value: 'gaj', label: 'XX市公安局' },
-  { value: 'gac', label: 'XX区公安处' },
-  { value: 'pcs', label: 'XX派出所' },
-];
-
-// 默认示例用户
-const DEFAULT_USERS: User[] = [
-  {
-    id: 1,
-    username: 'admin',
-    name: '系统管理员',
-    email: 'admin@gaj.gov.cn',
-    phone: '13800138000',
-    role: 'admin',
-    organization: 'gaj',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 2,
-    username: 'zhangsan',
-    name: '张三',
-    email: 'zhangsan@gac.gov.cn',
-    phone: '13800138001',
-    role: 'manager',
-    organization: 'gac',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-  {
-    id: 3,
-    username: 'lisi',
-    name: '李四',
-    email: 'lisi@pcs.gov.cn',
-    phone: '13800138002',
-    role: 'operator',
-    organization: 'pcs',
-    is_active: true,
-    created_at: new Date().toISOString(),
-  },
-];
-
-const STORAGE_KEY = 'users';
-
 export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
+  const [users, setUsers] = useState<UserType[]>([]);
+  const [organizations, setOrganizations] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [editingUser, setEditingUser] = useState<UserType | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [deletingUser, setDeletingUser] = useState<User | null>(null);
-  const [nextId, setNextId] = useState(4);
+  const [deletingUser, setDeletingUser] = useState<UserType | null>(null);
   const [form, setForm] = useState<UserForm>({
     username: '',
     name: '',
     email: '',
     phone: '',
-    role: '',
-    organization: '',
+    role_id: '',
+    organization_id: '',
     is_active: true,
   });
 
-  const getUsersFromStorage = (): User[] => {
-    try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.users || DEFAULT_USERS;
-      }
-    } catch (error) {
-      console.error('读取用户数据失败:', error);
-    }
-    return DEFAULT_USERS;
-  };
-
-  const saveUsersToStorage = (userList: User[], newNextId?: number) => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        users: userList,
-        nextId: newNextId || nextId
-      }));
-    } catch (error) {
-      console.error('保存用户数据失败:', error);
-    }
-  };
-
-  const fetchUsers = async () => {
+  const loadData = async () => {
     try {
       setLoading(true);
       
-      // 从 localStorage 读取数据
-      const savedUsers = getUsersFromStorage();
-      const savedNextId = localStorage.getItem(STORAGE_KEY);
-      if (savedNextId) {
-        try {
-          const parsed = JSON.parse(savedNextId);
-          if (parsed.nextId) {
-            setNextId(parsed.nextId);
-          }
-        } catch (e) {
-          // 忽略
-        }
-      }
+      const [savedUsers, savedOrganizations, savedRoles] = await Promise.all([
+        fetchUsers(),
+        fetchOrganizations(),
+        fetchRoles(),
+      ]);
       
       setUsers(savedUsers);
+      setOrganizations(savedOrganizations);
+      setRoles(savedRoles);
     } catch (error) {
-      console.error('获取用户列表失败:', error);
+      console.error('获取数据失败:', error);
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchUsers();
+    loadData();
   }, []);
 
-  const handleOpenDialog = (user?: User) => {
+  const handleOpenDialog = (user?: UserType) => {
     if (user) {
       setEditingUser(user);
       setForm({
         username: user.username,
         name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        organization: user.organization,
+        email: user.email || '',
+        phone: user.phone || '',
+        role_id: user.role_id?.toString() || '',
+        organization_id: user.organization_id?.toString() || '',
         is_active: user.is_active,
       });
     } else {
@@ -210,8 +127,8 @@ export default function UsersPage() {
         name: '',
         email: '',
         phone: '',
-        role: '',
-        organization: '',
+        role_id: '',
+        organization_id: '',
         is_active: true,
       });
     }
@@ -225,37 +142,27 @@ export default function UsersPage() {
         return;
       }
 
-      const userList = getUsersFromStorage();
-      
+      const formData: UserFormData = {
+        username: form.username,
+        name: form.name,
+        email: form.email || undefined,
+        phone: form.phone || undefined,
+        role_id: form.role_id ? parseInt(form.role_id) : undefined,
+        organization_id: form.organization_id ? parseInt(form.organization_id) : undefined,
+        is_active: form.is_active,
+      };
+
       if (editingUser) {
-        // 编辑现有用户
-        const updatedList = userList.map(user => {
-          if (user.id === editingUser.id) {
-            return {
-              ...user,
-              ...form,
-            };
-          }
-          return user;
-        });
-        
-        saveUsersToStorage(updatedList);
+        await updateUser(editingUser.id, formData);
+        toast.success('用户已更新');
       } else {
-        // 新增用户
-        const newUser: User = {
-          id: nextId,
-          ...form,
-          created_at: new Date().toISOString(),
-        };
-        
-        const updatedList = [...userList, newUser];
-        saveUsersToStorage(updatedList, nextId + 1);
-        setNextId(nextId + 1);
+        await createUser(formData);
+        toast.success('用户已创建');
       }
 
       setDialogOpen(false);
-      toast.success(editingUser ? '用户已更新' : '用户已创建');
-      fetchUsers();
+      setEditingUser(null);
+      loadData();
     } catch (error) {
       console.error('保存用户失败:', error);
       toast.error('保存失败，请重试');
@@ -266,33 +173,38 @@ export default function UsersPage() {
     if (!deletingUser) return;
 
     try {
-      const userList = getUsersFromStorage();
-      const updatedList = userList.filter(user => user.id !== deletingUser.id);
-      
-      saveUsersToStorage(updatedList);
-
+      await deleteUser(deletingUser.id);
       setDeleteDialogOpen(false);
       setDeletingUser(null);
       toast.success('用户已删除');
-      fetchUsers();
+      loadData();
     } catch (error) {
       console.error('删除用户失败:', error);
       toast.error('删除失败，请重试');
     }
   };
 
-  const getRoleLabel = (role: string) => {
-    return ROLES.find(r => r.value === role)?.label || role;
+  const getOrganizationName = (orgId: number | null) => {
+    if (!orgId) return '-';
+    const org = organizations.find(o => o.id === orgId);
+    return org?.name || '-';
   };
 
-  const getOrganizationLabel = (org: string) => {
-    return ORGANIZATIONS.find(o => o.value === org)?.label || org;
+  const getRoleName = (roleId: number | null) => {
+    if (!roleId) return '-';
+    const role = roles.find(r => r.id === roleId);
+    return role?.name || '-';
   };
 
-  const filteredUsers = users.filter(user => 
-    user.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    user.username.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const getRoleColor = (roleId: number | null) => {
+    if (!roleId) return 'bg-gray-100 text-gray-800';
+    const role = roles.find(r => r.id === roleId);
+    const roleName = role?.name || '';
+    if (roleName.includes('管理员')) return 'bg-red-100 text-red-800';
+    if (roleName.includes('部门')) return 'bg-blue-100 text-blue-800';
+    if (roleName.includes('操作')) return 'bg-green-100 text-green-800';
+    return 'bg-gray-100 text-gray-800';
+  };
 
   return (
     <div className="space-y-6">
@@ -303,7 +215,7 @@ export default function UsersPage() {
             用户管理
           </CardTitle>
           <CardDescription>
-            管理系统用户，分配角色和所属组织
+            管理系统用户，分配角色和组织权限（已迁移至 Supabase）
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -331,6 +243,7 @@ export default function UsersPage() {
                 <TableRow>
                   <TableHead>用户名</TableHead>
                   <TableHead>姓名</TableHead>
+                  <TableHead>邮箱</TableHead>
                   <TableHead>角色</TableHead>
                   <TableHead>所属组织</TableHead>
                   <TableHead>状态</TableHead>
@@ -340,39 +253,28 @@ export default function UsersPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={7} className="text-center py-8">
                       加载中...
                     </TableCell>
                   </TableRow>
-                ) : filteredUsers.length === 0 ? (
+                ) : users.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-8">
+                    <TableCell colSpan={7} className="text-center py-8">
                       暂无用户数据
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredUsers.map((user) => (
+                  users.map((user) => (
                     <TableRow key={user.id}>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                            <User className="h-4 w-4 text-blue-600" />
-                          </div>
-                          <span className="font-medium">{user.username}</span>
-                        </div>
-                      </TableCell>
+                      <TableCell className="font-medium">{user.username}</TableCell>
                       <TableCell>{user.name}</TableCell>
+                      <TableCell className="text-muted-foreground">{user.email || '-'}</TableCell>
                       <TableCell>
-                        <Badge className="bg-blue-100 text-blue-800">
-                          {getRoleLabel(user.role)}
+                        <Badge className={getRoleColor(user.role_id)}>
+                          {getRoleName(user.role_id)}
                         </Badge>
                       </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1">
-                          <Building2 className="h-4 w-4 text-muted-foreground" />
-                          {getOrganizationLabel(user.organization)}
-                        </div>
-                      </TableCell>
+                      <TableCell>{getOrganizationName(user.organization_id)}</TableCell>
                       <TableCell>
                         <Badge variant={user.is_active ? 'default' : 'secondary'}>
                           {user.is_active ? '启用' : '禁用'}
@@ -408,7 +310,6 @@ export default function UsersPage() {
         </CardContent>
       </Card>
 
-      {/* 编辑对话框 */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
@@ -416,7 +317,7 @@ export default function UsersPage() {
               {editingUser ? '编辑用户' : '新增用户'}
             </DialogTitle>
             <DialogDescription>
-              填写用户信息，设置角色和所属组织
+              填写用户信息，分配角色和组织
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -427,7 +328,7 @@ export default function UsersPage() {
                   id="username"
                   value={form.username}
                   onChange={(e) => setForm({ ...form, username: e.target.value})}
-                  placeholder="例如：admin"
+                  placeholder="请输入用户名"
                 />
               </div>
               <div className="space-y-2">
@@ -436,7 +337,7 @@ export default function UsersPage() {
                   id="name"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value})}
-                  placeholder="例如：张三"
+                  placeholder="请输入姓名"
                 />
               </div>
             </div>
@@ -448,16 +349,16 @@ export default function UsersPage() {
                   type="email"
                   value={form.email}
                   onChange={(e) => setForm({ ...form, email: e.target.value})}
-                  placeholder="example@gaj.gov.cn"
+                  placeholder="请输入邮箱"
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="phone">电话</Label>
+                <Label htmlFor="phone">手机号</Label>
                 <Input
                   id="phone"
                   value={form.phone}
                   onChange={(e) => setForm({ ...form, phone: e.target.value})}
-                  placeholder="13800138000"
+                  placeholder="请输入手机号"
                 />
               </div>
             </div>
@@ -465,16 +366,17 @@ export default function UsersPage() {
               <div className="space-y-2">
                 <Label htmlFor="role">角色</Label>
                 <Select
-                  value={form.role}
-                  onValueChange={(value) => setForm({ ...form, role: value})}
+                  value={form.role_id || 'none'}
+                  onValueChange={(value) => setForm({ ...form, role_id: value === 'none' ? '' : value})}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="请选择角色" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ROLES.map((role) => (
-                      <SelectItem key={role.value} value={role.value}>
-                        {role.label}
+                    <SelectItem value="none">请选择</SelectItem>
+                    {roles.map((role) => (
+                      <SelectItem key={role.id} value={role.id.toString()}>
+                        {role.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -483,16 +385,17 @@ export default function UsersPage() {
               <div className="space-y-2">
                 <Label htmlFor="organization">所属组织</Label>
                 <Select
-                  value={form.organization}
-                  onValueChange={(value) => setForm({ ...form, organization: value})}
+                  value={form.organization_id || 'none'}
+                  onValueChange={(value) => setForm({ ...form, organization_id: value === 'none' ? '' : value})}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="请选择组织" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ORGANIZATIONS.map((org) => (
-                      <SelectItem key={org.value} value={org.value}>
-                        {org.label}
+                    <SelectItem value="none">请选择</SelectItem>
+                    {organizations.map((org) => (
+                      <SelectItem key={org.id} value={org.id.toString()}>
+                        {org.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -511,7 +414,6 @@ export default function UsersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* 删除确认对话框 */}
       <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
