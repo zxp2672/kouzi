@@ -7,6 +7,7 @@ export interface User {
   email: string | null;
   phone: string | null;
   role_id: number | null;
+  organization_id: number | null;
   department: string | null;
   is_active: boolean;
   created_at: string;
@@ -19,8 +20,9 @@ export interface UserFormData {
   email?: string;
   phone?: string;
   role_id?: number;
+  organization_id?: number;
   department?: string;
-  is_active: boolean;
+  is_active?: boolean;
 }
 
 const DEFAULT_USERS: User[] = [
@@ -31,6 +33,7 @@ const DEFAULT_USERS: User[] = [
     email: 'admin@example.com',
     phone: '13800138000',
     role_id: 1,
+    organization_id: null,
     department: '公安局机关',
     is_active: true,
     created_at: new Date().toISOString(),
@@ -43,6 +46,7 @@ const DEFAULT_USERS: User[] = [
     email: 'manager@example.com',
     phone: '13800138001',
     role_id: 2,
+    organization_id: null,
     department: '公安处机关',
     is_active: true,
     created_at: new Date().toISOString(),
@@ -132,12 +136,15 @@ export async function createUser(user: UserFormData): Promise<User> {
     }
     
     const newUser: User = {
-      ...user,
       id: nextId,
+      username: user.username,
+      name: user.name,
       email: user.email || null,
       phone: user.phone || null,
       role_id: user.role_id || null,
+      organization_id: user.organization_id !== undefined ? user.organization_id : null,
       department: user.department || null,
+      is_active: user.is_active !== undefined ? user.is_active : true,
       created_at: new Date().toISOString(),
       updated_at: null
     };
@@ -151,11 +158,14 @@ export async function createUser(user: UserFormData): Promise<User> {
     const client = getSupabaseClient();
     const now = new Date().toISOString();
     const userToInsert = {
-      ...user,
+      username: user.username,
+      name: user.name,
       email: user.email || null,
       phone: user.phone || null,
       role_id: user.role_id || null,
+      organization_id: user.organization_id !== undefined ? user.organization_id : null,
       department: user.department || null,
+      is_active: user.is_active !== undefined ? user.is_active : true,
       created_at: now,
       updated_at: now
     };
@@ -181,12 +191,15 @@ export async function createUser(user: UserFormData): Promise<User> {
       }
       
       const newUser: User = {
-        ...user,
         id: nextId,
+        username: user.username,
+        name: user.name,
         email: user.email || null,
         phone: user.phone || null,
         role_id: user.role_id || null,
+        organization_id: user.organization_id !== undefined ? user.organization_id : null,
         department: user.department || null,
+        is_active: user.is_active !== undefined ? user.is_active : true,
         created_at: new Date().toISOString(),
         updated_at: null
       };
@@ -212,12 +225,15 @@ export async function createUser(user: UserFormData): Promise<User> {
     }
     
     const newUser: User = {
-      ...user,
       id: nextId,
+      username: user.username,
+      name: user.name,
       email: user.email || null,
       phone: user.phone || null,
       role_id: user.role_id || null,
+      organization_id: user.organization_id !== undefined ? user.organization_id : null,
       department: user.department || null,
+      is_active: user.is_active !== undefined ? user.is_active : true,
       created_at: new Date().toISOString(),
       updated_at: null
     };
@@ -237,10 +253,12 @@ export async function updateUser(id: number, user: UserFormData): Promise<User> 
       u.id === id ? { 
         ...u, 
         ...user,
-        email: user.email || null,
-        phone: user.phone || null,
-        role_id: user.role_id || null,
-        department: user.department || null,
+        email: user.email !== undefined ? user.email : u.email,
+        phone: user.phone !== undefined ? user.phone : u.phone,
+        role_id: user.role_id !== undefined ? user.role_id : u.role_id,
+        organization_id: user.organization_id !== undefined ? user.organization_id : u.organization_id,
+        department: user.department !== undefined ? user.department : u.department,
+        is_active: user.is_active !== undefined ? user.is_active : u.is_active,
         updated_at: new Date().toISOString()
       } : u
     );
@@ -267,10 +285,6 @@ export async function updateUser(id: number, user: UserFormData): Promise<User> 
     const now = new Date().toISOString();
     const userToUpdate = {
       ...user,
-      email: user.email || null,
-      phone: user.phone || null,
-      role_id: user.role_id || null,
-      department: user.department || null,
       updated_at: now
     };
 
@@ -288,10 +302,12 @@ export async function updateUser(id: number, user: UserFormData): Promise<User> 
         u.id === id ? { 
           ...u, 
           ...user,
-          email: user.email || null,
-          phone: user.phone || null,
-          role_id: user.role_id || null,
-          department: user.department || null,
+          email: user.email !== undefined ? user.email : u.email,
+          phone: user.phone !== undefined ? user.phone : u.phone,
+          role_id: user.role_id !== undefined ? user.role_id : u.role_id,
+          organization_id: user.organization_id !== undefined ? user.organization_id : u.organization_id,
+          department: user.department !== undefined ? user.department : u.department,
+          is_active: user.is_active !== undefined ? user.is_active : u.is_active,
           updated_at: new Date().toISOString()
         } : u
       );
@@ -321,10 +337,12 @@ export async function updateUser(id: number, user: UserFormData): Promise<User> 
       u.id === id ? { 
         ...u, 
         ...user,
-        email: user.email || null,
-        phone: user.phone || null,
-        role_id: user.role_id || null,
-        department: user.department || null,
+        email: user.email !== undefined ? user.email : u.email,
+        phone: user.phone !== undefined ? user.phone : u.phone,
+        role_id: user.role_id !== undefined ? user.role_id : u.role_id,
+        organization_id: user.organization_id !== undefined ? user.organization_id : u.organization_id,
+        department: user.department !== undefined ? user.department : u.department,
+        is_active: user.is_active !== undefined ? user.is_active : u.is_active,
         updated_at: new Date().toISOString()
       } : u
     );

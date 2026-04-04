@@ -6,17 +6,19 @@ export interface Role {
   name: string;
   description: string | null;
   level: number;
+  permissions: string[];
   is_active: boolean;
   created_at: string;
   updated_at: string | null;
 }
 
 export interface RoleFormData {
-  code: string;
+  code?: string;
   name: string;
   description?: string;
   level?: number;
-  is_active: boolean;
+  permissions?: string[];
+  is_active?: boolean;
 }
 
 const DEFAULT_ROLES: Role[] = [
@@ -26,6 +28,7 @@ const DEFAULT_ROLES: Role[] = [
     name: '系统管理员',
     description: '拥有系统全部权限',
     level: 1,
+    permissions: [],
     is_active: true,
     created_at: new Date().toISOString(),
     updated_at: null,
@@ -36,6 +39,7 @@ const DEFAULT_ROLES: Role[] = [
     name: '库房管理员',
     description: '管理库房日常操作',
     level: 2,
+    permissions: [],
     is_active: true,
     created_at: new Date().toISOString(),
     updated_at: null,
@@ -46,6 +50,7 @@ const DEFAULT_ROLES: Role[] = [
     name: '普通用户',
     description: '普通操作用户',
     level: 3,
+    permissions: [],
     is_active: true,
     created_at: new Date().toISOString(),
     updated_at: null,
@@ -134,10 +139,13 @@ export async function createRole(role: RoleFormData): Promise<Role> {
     }
     
     const newRole: Role = {
-      ...role,
       id: nextId,
+      code: role.code || 'role_' + nextId,
+      name: role.name,
       description: role.description || null,
       level: role.level || 3,
+      permissions: role.permissions || [],
+      is_active: role.is_active !== undefined ? role.is_active : true,
       created_at: new Date().toISOString(),
       updated_at: null
     };
@@ -151,9 +159,12 @@ export async function createRole(role: RoleFormData): Promise<Role> {
     const client = getSupabaseClient();
     const now = new Date().toISOString();
     const roleToInsert = {
-      ...role,
+      code: role.code || 'role',
+      name: role.name,
       description: role.description || null,
       level: role.level || 3,
+      permissions: role.permissions || [],
+      is_active: role.is_active !== undefined ? role.is_active : true,
       created_at: now,
       updated_at: now
     };
@@ -179,10 +190,13 @@ export async function createRole(role: RoleFormData): Promise<Role> {
       }
       
       const newRole: Role = {
-        ...role,
         id: nextId,
+        code: role.code || 'role_' + nextId,
+        name: role.name,
         description: role.description || null,
         level: role.level || 3,
+        permissions: role.permissions || [],
+        is_active: role.is_active !== undefined ? role.is_active : true,
         created_at: new Date().toISOString(),
         updated_at: null
       };
@@ -208,10 +222,13 @@ export async function createRole(role: RoleFormData): Promise<Role> {
     }
     
     const newRole: Role = {
-      ...role,
       id: nextId,
+      code: role.code || 'role_' + nextId,
+      name: role.name,
       description: role.description || null,
       level: role.level || 3,
+      permissions: role.permissions || [],
+      is_active: role.is_active !== undefined ? role.is_active : true,
       created_at: new Date().toISOString(),
       updated_at: null
     };
@@ -231,8 +248,11 @@ export async function updateRole(id: number, role: RoleFormData): Promise<Role> 
       r.id === id ? { 
         ...r, 
         ...role,
-        description: role.description || null,
-        level: role.level || r.level,
+        code: role.code || r.code,
+        description: role.description !== undefined ? role.description : r.description,
+        level: role.level !== undefined ? role.level : r.level,
+        permissions: role.permissions !== undefined ? role.permissions : r.permissions,
+        is_active: role.is_active !== undefined ? role.is_active : r.is_active,
         updated_at: new Date().toISOString()
       } : r
     );
@@ -259,8 +279,6 @@ export async function updateRole(id: number, role: RoleFormData): Promise<Role> 
     const now = new Date().toISOString();
     const roleToUpdate = {
       ...role,
-      description: role.description || null,
-      level: role.level,
       updated_at: now
     };
 
@@ -278,8 +296,11 @@ export async function updateRole(id: number, role: RoleFormData): Promise<Role> 
         r.id === id ? { 
           ...r, 
           ...role,
-          description: role.description || null,
-          level: role.level || r.level,
+          code: role.code || r.code,
+          description: role.description !== undefined ? role.description : r.description,
+          level: role.level !== undefined ? role.level : r.level,
+          permissions: role.permissions !== undefined ? role.permissions : r.permissions,
+          is_active: role.is_active !== undefined ? role.is_active : r.is_active,
           updated_at: new Date().toISOString()
         } : r
       );
@@ -309,8 +330,11 @@ export async function updateRole(id: number, role: RoleFormData): Promise<Role> 
       r.id === id ? { 
         ...r, 
         ...role,
-        description: role.description || null,
-        level: role.level || r.level,
+        code: role.code || r.code,
+        description: role.description !== undefined ? role.description : r.description,
+        level: role.level !== undefined ? role.level : r.level,
+        permissions: role.permissions !== undefined ? role.permissions : r.permissions,
+        is_active: role.is_active !== undefined ? role.is_active : r.is_active,
         updated_at: new Date().toISOString()
       } : r
     );

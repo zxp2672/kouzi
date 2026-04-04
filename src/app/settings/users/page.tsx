@@ -51,8 +51,8 @@ import {
   updateUser, 
   deleteUser 
 } from '@/services/user-service';
-import { fetchOrganizations } from '@/services/organization-service';
-import { fetchRoles } from '@/services/role-service';
+import { Organization, fetchOrganizations } from '@/services/organization-service';
+import { Role, fetchRoles } from '@/services/role-service';
 
 interface UserForm {
   username: string;
@@ -66,8 +66,8 @@ interface UserForm {
 
 export default function UsersPage() {
   const [users, setUsers] = useState<UserType[]>([]);
-  const [organizations, setOrganizations] = useState<any[]>([]);
-  const [roles, setRoles] = useState<any[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);

@@ -19,7 +19,9 @@ export interface OrganizationFormData {
   code: string;
   name: string;
   type: string;
+  level?: number;
   parent_id?: number;
+  path?: string | null;
   sort_order?: number;
   is_active: boolean;
 }
