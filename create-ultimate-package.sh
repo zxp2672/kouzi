@@ -41,6 +41,7 @@ cp \
   一键部署.bat \
   一键部署.ps1 \
   一键部署.sh \
+  一键部署-修复版.sh \
   解除阻止.bat \
   install-windows.bat \
   快速启动.bat \
