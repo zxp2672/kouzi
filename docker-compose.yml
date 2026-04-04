@@ -1,0 +1,51 @@
+version: '3.8'
+
+services:
+  warehouse-system:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: warehouse-management
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - TZ=Asia/Shanghai
+    volumes:
+      - warehouse-data:/app/data
+    networks:
+      - warehouse-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # 可选：Nginx 反向代理（如果需要）
+  nginx:
+    image: nginx:alpine
+    container_name: warehouse-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/logs:/var/log/nginx
+    depends_on:
+      - warehouse-system
+    networks:
+      - warehouse-network
+    profiles:
+      - with-nginx
+
+volumes:
+  warehouse-data:
+    driver: local
+
+networks:
+  warehouse-network:
+    driver: bridge
