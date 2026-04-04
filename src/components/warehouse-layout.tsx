@@ -51,13 +51,31 @@ const DEFAULT_CONFIG = {
   copyright_text: '© 2024 XX市公安局 版权所有',
 };
 
+const getSystemConfig = () => {
+  try {
+    const savedConfigs = localStorage.getItem('system_configs');
+    if (savedConfigs) {
+      const parsed = JSON.parse(savedConfigs);
+      return {
+        unit_name: parsed.unit_name || DEFAULT_CONFIG.unit_name,
+        unit_logo_url: parsed.unit_logo_url || DEFAULT_CONFIG.unit_logo_url,
+        system_title: parsed.system_title || DEFAULT_CONFIG.system_title,
+        copyright_text: parsed.copyright_text || DEFAULT_CONFIG.copyright_text,
+      };
+    }
+  } catch (error) {
+    console.error('读取系统配置失败:', error);
+  }
+  return DEFAULT_CONFIG;
+};
+
 export default function WarehouseLayout({ children }: LayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
-  const config = DEFAULT_CONFIG;
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
 
   useEffect(() => {
     // 检查登录状态
@@ -65,6 +83,9 @@ export default function WarehouseLayout({ children }: LayoutProps) {
     const user = localStorage.getItem('username') || '';
     setIsLoggedIn(loggedIn);
     setUsername(user);
+
+    // 读取系统配置
+    setConfig(getSystemConfig());
 
     // 如果未登录且不在登录页，跳转到登录页
     if (!loggedIn && pathname !== '/login') {

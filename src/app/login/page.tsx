@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Lock, User, Eye, EyeOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,15 +8,45 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 
+const DEFAULT_CONFIG = {
+  unit_name: 'XX市公安局',
+  unit_logo_url: '',
+  system_title: '库房管理系统',
+  copyright_text: '© 2024 XX市公安局 版权所有',
+};
+
+const getSystemConfig = () => {
+  try {
+    const savedConfigs = localStorage.getItem('system_configs');
+    if (savedConfigs) {
+      const parsed = JSON.parse(savedConfigs);
+      return {
+        unit_name: parsed.unit_name || DEFAULT_CONFIG.unit_name,
+        unit_logo_url: parsed.unit_logo_url || DEFAULT_CONFIG.unit_logo_url,
+        system_title: parsed.system_title || DEFAULT_CONFIG.system_title,
+        copyright_text: parsed.copyright_text || DEFAULT_CONFIG.copyright_text,
+      };
+    }
+  } catch (error) {
+    console.error('读取系统配置失败:', error);
+  }
+  return DEFAULT_CONFIG;
+};
+
 export default function LoginPage() {
   const router = useRouter();
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [formData, setFormData] = useState({
     username: '',
     password: '',
   });
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    setConfig(getSystemConfig());
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -51,14 +81,24 @@ export default function LoginPage() {
         {/* 顶部Logo和标题 */}
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">
-            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center shadow-lg">
-              <Shield className="h-10 w-10 text-white" />
-            </div>
+            {config.unit_logo_url ? (
+              <div className="w-20 h-20 rounded-full bg-white flex items-center justify-center shadow-lg overflow-hidden">
+                <img
+                  src={config.unit_logo_url}
+                  alt="Logo"
+                  className="w-14 h-14 object-contain"
+                />
+              </div>
+            ) : (
+              <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center shadow-lg">
+                <Shield className="h-10 w-10 text-white" />
+              </div>
+            )}
           </div>
           <h1 className="text-2xl font-bold text-gray-900">
-            库房管理系统
+            {config.system_title}
           </h1>
-          <p className="text-gray-600 mt-2">XX市公安局</p>
+          <p className="text-gray-600 mt-2">{config.unit_name}</p>
         </div>
 
         {/* 登录卡片 */}
@@ -142,7 +182,7 @@ export default function LoginPage() {
 
         {/* 底部版权 */}
         <div className="text-center mt-8 text-sm text-gray-500">
-          <p>© 2024 XX市公安局 版权所有</p>
+          <p>{config.copyright_text}</p>
         </div>
       </div>
     </div>

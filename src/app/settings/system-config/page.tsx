@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { toast } from 'sonner';
 
 interface SystemConfig {
   id: number;
@@ -59,13 +59,7 @@ export default function SystemConfigPage() {
   const fetchConfigs = async () => {
     try {
       setLoading(true);
-      const client = getSupabaseClient();
-      const { data, error } = await client
-        .from('system_configs')
-        .select('*');
-
-      if (error) throw error;
-
+      
       // 构建配置对象
       const configMap: Record<string, string> = {};
       
@@ -74,12 +68,12 @@ export default function SystemConfigPage() {
         configMap[config.key] = config.value;
       });
 
-      // 然后用数据库中的值覆盖
-      if (data) {
-        data.forEach((config: SystemConfig) => {
-          if (config.config_value !== null) {
-            configMap[config.config_key] = config.config_value;
-          }
+      // 然后用 localStorage 中的值覆盖
+      const savedConfigs = localStorage.getItem('system_configs');
+      if (savedConfigs) {
+        const parsedConfigs = JSON.parse(savedConfigs);
+        Object.keys(parsedConfigs).forEach(key => {
+          configMap[key] = parsedConfigs[key];
         });
       }
 
@@ -101,29 +95,14 @@ export default function SystemConfigPage() {
   const handleSave = async () => {
     try {
       setSaving(true);
-      const client = getSupabaseClient();
-
-      // 逐个保存配置
-      for (const key of Object.keys(configs)) {
-        const { error } = await client
-          .from('system_configs')
-          .upsert({
-            config_key: key,
-            config_value: configs[key],
-            config_type: DEFAULT_CONFIGS.find(c => c.key === key)?.type || 'string',
-            description: DEFAULT_CONFIGS.find(c => c.key === key)?.description || '',
-            updated_at: new Date().toISOString(),
-          }, {
-            onConflict: 'config_key',
-          });
-
-        if (error) throw error;
-      }
-
-      alert('保存成功！');
+      
+      // 保存到 localStorage
+      localStorage.setItem('system_configs', JSON.stringify(configs));
+      
+      toast.success('保存成功！配置已更新');
     } catch (error) {
       console.error('保存配置失败:', error);
-      alert('保存失败，请重试');
+      toast.error('保存失败，请重试');
     } finally {
       setSaving(false);
     }
@@ -295,7 +274,7 @@ export default function SystemConfigPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="border rounded-lg p-8 bg-gradient-to-br from-red-50 to-red-100">
+            <div className="border rounded-lg p-8 bg-gradient-to-br from-blue-50 to-blue-100">
               <div className="flex flex-col items-center text-center space-y-4">
                 {logoPreview && (
                   <div className="w-24 h-24 rounded-full bg-white flex items-center justify-center shadow-md">
@@ -307,14 +286,14 @@ export default function SystemConfigPage() {
                   </div>
                 )}
                 <div>
-                  <h1 className="text-2xl font-bold text-red-800">
+                  <h1 className="text-2xl font-bold text-blue-800">
                     {configs['unit_name'] || 'XX市公安局'}
                   </h1>
-                  <p className="text-lg text-red-700 mt-1">
+                  <p className="text-lg text-blue-700 mt-1">
                     {configs['system_title'] || '库房管理系统'}
                   </p>
                 </div>
-                <p className="text-sm text-red-600 mt-4">
+                <p className="text-sm text-blue-600 mt-4">
                   {configs['copyright_text'] || '© 2024 XX市公安局 版权所有'}
                 </p>
               </div>
