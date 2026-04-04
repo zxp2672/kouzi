@@ -242,7 +242,7 @@ export default function OrganizationsPage() {
       setForm({
         code: '',
         name: '',
-        type: '',
+        type: 'team',
         parent_id: '',
         sort_order: '0',
         is_active: true,
@@ -588,7 +588,7 @@ export default function OrganizationsPage() {
               <div className="space-y-2">
                 <Label htmlFor="type">组织类型 *</Label>
                 <Select
-                  value={form.type}
+                  value={form.type || 'team'}
                   onValueChange={(value) => setForm({ ...form, type: value})}
                 >
                   <SelectTrigger>
@@ -606,14 +606,14 @@ export default function OrganizationsPage() {
               <div className="space-y-2">
                 <Label htmlFor="parent">上级组织</Label>
                 <Select
-                  value={form.parent_id}
-                  onValueChange={(value) => setForm({ ...form, parent_id: value})}
+                  value={form.parent_id || 'none'}
+                  onValueChange={(value) => setForm({ ...form, parent_id: value === 'none' ? '' : value})}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="无（顶级组织）" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">无（顶级组织）</SelectItem>
+                    <SelectItem value="none">无（顶级组织）</SelectItem>
                     {getAvailableParents(editingOrg).map((org) => (
                       <SelectItem key={org.id} value={org.id.toString()}>
                         {org.name} ({getOrganizationTypeLabel(org.type)})
