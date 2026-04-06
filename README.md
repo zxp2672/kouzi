@@ -15,7 +15,7 @@ cd kouzi
 docker-compose up -d
 
 # 3. 访问应用
-# 打开浏览器访问：http://localhost:8080
+# 打开浏览器访问：http://localhost:3000
 ```
 
 详细文档请查看：[DOCKER_QUICKSTART.md](./DOCKER_QUICKSTART.md)
@@ -37,7 +37,7 @@ npm run build
 npm start
 ```
 
-访问：http://localhost:8080
+访问：http://localhost:3000
 
 详细文档请查看：[NPM_DEPLOY.md](./NPM_DEPLOY.md)
 

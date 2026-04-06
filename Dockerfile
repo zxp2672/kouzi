@@ -20,7 +20,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV production
-ENV PORT 8080
+ENV PORT 3000
 
 # 创建非 root 用户
 RUN addgroup -g 1001 -S nodejs
@@ -35,7 +35,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 USER nextjs
 
 # 暴露端口
-EXPOSE 8080
+EXPOSE 3000
 
 # 启动应用
 CMD ["node", "server.js"]

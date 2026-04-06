@@ -5,7 +5,7 @@ services:
     build: .
     container_name: warehouse-system
     ports:
-      - "8080:8080"
+      - "3000:3000"
     environment:
       - NODE_ENV=production
       # 数据库配置（可选，如不配置使用 Mock 数据）

@@ -21,7 +21,7 @@ docker-compose up -d
 
 ### 3. 访问应用
 
-打开浏览器访问：http://localhost:8080
+打开浏览器访问：http://localhost:3000
 
 ## 常用命令
 
