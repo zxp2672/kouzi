@@ -40,7 +40,7 @@ NEXT_PUBLIC_COZE_SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 pnpm dev
 ```
 
-访问：http://localhost:3000
+访问：http://localhost:8080
 
 ### 5. 生产模式部署
 
@@ -53,14 +53,14 @@ pnpm build
 #### 步骤 2：启动生产服务器
 
 ```bash
-# 使用默认端口 3000
+# 使用默认端口 8080
 pnpm start
 
-# 或指定端口
+# 或指定其他端口
 PORT=5000 pnpm start
 ```
 
-访问：http://localhost:3000（或你指定的端口）
+访问：http://localhost:8080（或你指定的端口）
 
 ## 常见问题
 
@@ -79,10 +79,10 @@ PORT=5000 pnpm start
 
 ```bash
 # Linux/Mac
-lsof -ti:3000 | xargs kill -9
+lsof -ti:8080 | xargs kill -9
 
 # Windows
-netstat -ano | findstr :3000
+netstat -ano | findstr :8080
 taskkill /PID <PID> /F
 ```
 
