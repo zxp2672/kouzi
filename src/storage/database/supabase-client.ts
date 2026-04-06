@@ -6,8 +6,8 @@ interface SupabaseCredentials {
 }
 
 function getSupabaseCredentials(): SupabaseCredentials {
-  const url = process.env.NEXT_PUBLIC_COZE_SUPABASE_URL || process.env.COZE_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_COZE_SUPABASE_ANON_KEY || process.env.COZE_SUPABASE_ANON_KEY;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_COZE_SUPABASE_URL || process.env.COZE_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_COZE_SUPABASE_ANON_KEY || process.env.COZE_SUPABASE_ANON_KEY;
 
   // 如果没有设置环境变量，返回占位值而不是报错
   // 这样可以避免页面崩溃
@@ -23,7 +23,7 @@ function getSupabaseCredentials(): SupabaseCredentials {
 }
 
 function getSupabaseServiceRoleKey(): string | undefined {
-  return process.env.NEXT_PUBLIC_COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.COZE_SUPABASE_SERVICE_ROLE_KEY;
+  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_COZE_SUPABASE_SERVICE_ROLE_KEY || process.env.COZE_SUPABASE_SERVICE_ROLE_KEY;
 }
 
 // 创建一个模拟的 Supabase 客户端，避免在没有配置时报错
