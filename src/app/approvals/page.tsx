@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
@@ -48,35 +47,6 @@ interface ApprovalItem {
   }>;
 }
 
-function getApprovals(): ApprovalItem[] {
-  try {
-    const saved = localStorage.getItem('approvals');
-    if (saved) {
-      return JSON.parse(saved);
-    }
-    const defaultApprovals: ApprovalItem[] = [
-      { id: 1, type: 'inbound', order_no: 'IN202401002', warehouse_name: '主仓库', status: 'pending', supplier: '劳保用品厂', remark: '补充库存', created_by: '王五', created_at: '2024-01-16T09:15:00Z' },
-      { id: 2, type: 'outbound', order_no: 'OUT202401002', warehouse_name: '主仓库', status: 'pending', customer: '派出所B', remark: '应急物资', created_by: '王五', created_at: '2024-01-16T14:20:00Z' },
-      { id: 3, type: 'transfer', order_no: 'TR202401002', from_warehouse_name: '分仓库', to_warehouse_name: '主仓库', warehouse_name: '分仓库', status: 'pending', remark: '退回物资', created_by: '王五', created_at: '2024-01-16T14:20:00Z' },
-      { id: 4, type: 'inbound', order_no: 'IN202401001', warehouse_name: '主仓库', status: 'approved', supplier: '安防设备有限公司', remark: '常规采购', created_by: '张三', created_at: '2024-01-15T10:30:00Z' },
-      { id: 5, type: 'outbound', order_no: 'OUT202401001', warehouse_name: '主仓库', status: 'approved', customer: '派出所A', remark: '日常领用', created_by: '张三', created_at: '2024-01-14T09:00:00Z' },
-      { id: 6, type: 'stock_count', order_no: 'SC202401001', warehouse_name: '主仓库', status: 'completed', remark: '月度盘点', created_by: '张三', created_at: '2024-01-15T08:00:00Z' },
-    ];
-    localStorage.setItem('approvals', JSON.stringify(defaultApprovals));
-    return defaultApprovals;
-  } catch {
-    return [];
-  }
-}
-
-function saveApprovals(items: ApprovalItem[]) {
-  try {
-    localStorage.setItem('approvals', JSON.stringify(items));
-  } catch {
-    console.error('保存失败');
-  }
-}
-
 export default function ApprovalsPage() {
   const [activeTab, setActiveTab] = useState('pending');
   const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
@@ -85,17 +55,29 @@ export default function ApprovalsPage() {
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedApproval, setSelectedApproval] = useState<ApprovalItem | null>(null);
 
-  const fetchApprovals = useCallback(() => {
+  const fetchApprovals = useCallback(async () => {
     setLoading(true);
     try {
-      const items = getApprovals();
+      const response = await fetch('/api/approvals');
+      const data = await response.json();
+      
       if (activeTab === 'pending') {
-        setApprovals(items.filter(item => item.status === 'pending'));
+        setApprovals(data.filter((item: ApprovalItem) => item.status === 'pending'));
       } else {
-        setApprovals(items.filter(item => item.status !== 'pending'));
+        setApprovals(data.filter((item: ApprovalItem) => item.status !== 'pending'));
       }
     } catch (error) {
       console.error('获取审核列表失败:', error);
+      // 如果 API 失败，使用 localStorage 作为降级方案
+      const saved = localStorage.getItem('approvals');
+      if (saved) {
+        const items = JSON.parse(saved);
+        if (activeTab === 'pending') {
+          setApprovals(items.filter((item: ApprovalItem) => item.status === 'pending'));
+        } else {
+          setApprovals(items.filter((item: ApprovalItem) => item.status !== 'pending'));
+        }
+      }
     } finally {
       setLoading(false);
     }
@@ -105,47 +87,99 @@ export default function ApprovalsPage() {
     fetchApprovals();
   }, [fetchApprovals]);
 
-  const handleViewDetail = (item: ApprovalItem) => {
-    const detail = { ...item, items: [] };
-    setSelectedApproval(detail);
+  const handleViewDetail = async (item: ApprovalItem) => {
+    try {
+      const response = await fetch(`/api/approvals/${item.id}?type=${item.type}`);
+      const detail = await response.json();
+      setSelectedApproval({ ...item, items: detail.items || [] });
+    } catch (error) {
+      console.error('获取详情失败:', error);
+      setSelectedApproval({ ...item, items: [] });
+    }
     setDetailDialogOpen(true);
   };
 
-  const handleApprove = (item: ApprovalItem) => {
+  const handleApprove = async (item: ApprovalItem) => {
     try {
-      const items = getApprovals();
-      const updatedItems = items.map(i => {
-        if (i.id === item.id) {
-          return { ...i, status: 'approved' };
-        }
-        return i;
+      const response = await fetch(`/api/approvals/${item.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: item.type,
+          status: 'approved',
+          approved_by: '系统管理员',
+        }),
       });
-      saveApprovals(updatedItems);
-      
-      alert('审核通过成功！');
-      fetchApprovals();
+
+      if (response.ok) {
+        alert('审核通过成功！');
+        fetchApprovals();
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || '审核失败');
+      }
     } catch (error) {
       console.error('审核失败:', error);
-      alert('审核失败，请重试');
+      // 如果 API 失败，使用 localStorage 作为降级方案
+      try {
+        const saved = localStorage.getItem('approvals');
+        const items = saved ? JSON.parse(saved) : [];
+        const updatedItems = items.map((i: ApprovalItem) => {
+          if (i.id === item.id && i.type === item.type) {
+            return { ...i, status: 'approved' };
+          }
+          return i;
+        });
+        localStorage.setItem('approvals', JSON.stringify(updatedItems));
+        alert('审核通过成功（已保存到本地）！');
+        fetchApprovals();
+      } catch (localStorageError) {
+        alert('审核失败，请重试');
+      }
     }
   };
 
-  const handleReject = (item: ApprovalItem) => {
+  const handleReject = async (item: ApprovalItem) => {
     try {
-      const items = getApprovals();
-      const updatedItems = items.map(i => {
-        if (i.id === item.id) {
-          return { ...i, status: 'rejected' };
-        }
-        return i;
+      const response = await fetch(`/api/approvals/${item.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          type: item.type,
+          status: 'rejected',
+          approved_by: '系统管理员',
+        }),
       });
-      saveApprovals(updatedItems);
-      
-      alert('审核拒绝成功！');
-      fetchApprovals();
+
+      if (response.ok) {
+        alert('审核拒绝成功！');
+        fetchApprovals();
+      } else {
+        const error = await response.json();
+        throw new Error(error.error || '操作失败');
+      }
     } catch (error) {
       console.error('操作失败:', error);
-      alert('操作失败，请重试');
+      // 如果 API 失败，使用 localStorage 作为降级方案
+      try {
+        const saved = localStorage.getItem('approvals');
+        const items = saved ? JSON.parse(saved) : [];
+        const updatedItems = items.map((i: ApprovalItem) => {
+          if (i.id === item.id && i.type === item.type) {
+            return { ...i, status: 'rejected' };
+          }
+          return i;
+        });
+        localStorage.setItem('approvals', JSON.stringify(updatedItems));
+        alert('审核拒绝成功（已保存到本地）！');
+        fetchApprovals();
+      } catch (localStorageError) {
+        alert('操作失败，请重试');
+      }
     }
   };
 
@@ -241,7 +275,7 @@ export default function ApprovalsPage() {
                   </TableRow>
                 ) : (
                   filteredApprovals.map((item) => (
-                    <TableRow key={item.id}>
+                    <TableRow key={`${item.type}-${item.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {getTypeIcon(item.type)}
@@ -325,7 +359,7 @@ export default function ApprovalsPage() {
                   </TableRow>
                 ) : (
                   filteredApprovals.map((item) => (
-                    <TableRow key={item.id}>
+                    <TableRow key={`${item.type}-${item.id}`}>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           {getTypeIcon(item.type)}
@@ -384,20 +418,63 @@ export default function ApprovalsPage() {
                   <div className="mt-1">{getStatusBadge(selectedApproval.status)}</div>
                 </div>
               </div>
+              {selectedApproval.supplier && (
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">供应商</label>
+                  <p className="mt-1">{selectedApproval.supplier}</p>
+                </div>
+              )}
+              {selectedApproval.customer && (
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">客户</label>
+                  <p className="mt-1">{selectedApproval.customer}</p>
+                </div>
+              )}
+              {selectedApproval.remark && (
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">备注</label>
+                  <p className="mt-1">{selectedApproval.remark}</p>
+                </div>
+              )}
+              {selectedApproval.items && selectedApproval.items.length > 0 && (
+                <div>
+                  <label className="text-sm font-medium text-muted-foreground">商品明细</label>
+                  <div className="mt-2 border rounded-lg">
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>商品编码</TableHead>
+                          <TableHead>商品名称</TableHead>
+                          <TableHead className="text-right">数量</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {selectedApproval.items.map((item, index) => (
+                          <TableRow key={index}>
+                            <TableCell>{item.product_code || '-'}</TableCell>
+                            <TableCell>{item.product_name || '-'}</TableCell>
+                            <TableCell className="text-right">{item.quantity}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </div>
+              )}
             </div>
             <DialogFooter>
               {selectedApproval.status === 'pending' && (
-              <>
-                <Button variant="outline" onClick={() => { handleReject(selectedApproval); setDetailDialogOpen(false); }}>
-                  <X className="mr-2 h-4 w-4" />
-                  拒绝
-                </Button>
-                <Button onClick={() => { handleApprove(selectedApproval); setDetailDialogOpen(false); }}>
-                  <Check className="mr-2 h-4 w-4" />
-                  通过
-                </Button>
-              </>
-            )}
+                <>
+                  <Button variant="outline" onClick={() => { handleReject(selectedApproval); setDetailDialogOpen(false); }}>
+                    <X className="mr-2 h-4 w-4" />
+                    拒绝
+                  </Button>
+                  <Button onClick={() => { handleApprove(selectedApproval); setDetailDialogOpen(false); }}>
+                    <Check className="mr-2 h-4 w-4" />
+                    通过
+                  </Button>
+                </>
+              )}
               <Button variant="outline" onClick={() => setDetailDialogOpen(false)}>
                 关闭
               </Button>
