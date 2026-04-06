@@ -2,17 +2,14 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
-interface Params {
-  params: { id: string };
-}
-
-export async function GET(request: Request, { params }: Params) {
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const client = getSupabaseClient();
     const { data, error } = await client
       .from('users')
       .select('*')
-      .eq('id', parseInt(params.id))
+      .eq('id', parseInt(id))
       .single();
 
     if (error) {
@@ -27,15 +24,16 @@ export async function GET(request: Request, { params }: Params) {
   }
 }
 
-export async function PUT(request: Request, { params }: Params) {
+export async function PUT(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const body = await request.json();
     const client = getSupabaseClient();
     
     const { data, error } = await client
       .from('users')
       .update(body)
-      .eq('id', parseInt(params.id))
+      .eq('id', parseInt(id))
       .select()
       .single();
 
@@ -51,14 +49,15 @@ export async function PUT(request: Request, { params }: Params) {
   }
 }
 
-export async function DELETE(request: Request, { params }: Params) {
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    const { id } = await params;
     const client = getSupabaseClient();
     
     const { error } = await client
       .from('users')
       .delete()
-      .eq('id', parseInt(params.id));
+      .eq('id', parseInt(id));
 
     if (error) {
       console.error('Supabase error:', error);

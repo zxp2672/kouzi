@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Search, Check, X, Eye, ArrowDownToLine, ArrowUpFromLine, ClipboardCheck, ArrowLeftRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,31 +37,24 @@ interface ApprovalItem {
   remark?: string;
   supplier?: string;
   customer?: string;
+  items?: Array<{
+    id?: number;
+    product_id: number;
+    product_code?: string;
+    product_name?: string;
+    quantity: number;
+    price?: string;
+    batch_no?: string;
+  }>;
 }
 
-interface ApprovalDetail {
-  id: number;
-  type: 'inbound' | 'outbound' | 'stock_count' | 'transfer';
-  order_no: string;
-  warehouse_name: string;
-  from_warehouse_name?: string;
-  to_warehouse_name?: string;
-  status: string;
-  created_by: string;
-  created_at: string;
-  remark?: string;
-  supplier?: string;
-  customer?: string;
-  items: any[];
-}
-
-function getApprovals() {
+function getApprovals(): ApprovalItem[] {
   try {
     const saved = localStorage.getItem('approvals');
     if (saved) {
       return JSON.parse(saved);
     }
-    const defaultApprovals = [
+    const defaultApprovals: ApprovalItem[] = [
       { id: 1, type: 'inbound', order_no: 'IN202401002', warehouse_name: '主仓库', status: 'pending', supplier: '劳保用品厂', remark: '补充库存', created_by: '王五', created_at: '2024-01-16T09:15:00Z' },
       { id: 2, type: 'outbound', order_no: 'OUT202401002', warehouse_name: '主仓库', status: 'pending', customer: '派出所B', remark: '应急物资', created_by: '王五', created_at: '2024-01-16T14:20:00Z' },
       { id: 3, type: 'transfer', order_no: 'TR202401002', from_warehouse_name: '分仓库', to_warehouse_name: '主仓库', warehouse_name: '分仓库', status: 'pending', remark: '退回物资', created_by: '王五', created_at: '2024-01-16T14:20:00Z' },
@@ -76,7 +69,7 @@ function getApprovals() {
   }
 }
 
-function saveApprovals(items) {
+function saveApprovals(items: ApprovalItem[]) {
   try {
     localStorage.setItem('approvals', JSON.stringify(items));
   } catch {
@@ -86,17 +79,13 @@ function saveApprovals(items) {
 
 export default function ApprovalsPage() {
   const [activeTab, setActiveTab] = useState('pending');
-  const [approvals, setApprovals] = useState([]);
+  const [approvals, setApprovals] = useState<ApprovalItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [selectedApproval, setSelectedApproval] = useState(null);
+  const [selectedApproval, setSelectedApproval] = useState<ApprovalItem | null>(null);
 
-  useEffect(() => {
-    fetchApprovals();
-  }, [activeTab]);
-
-  const fetchApprovals = () => {
+  const fetchApprovals = useCallback(() => {
     setLoading(true);
     try {
       const items = getApprovals();
@@ -110,15 +99,19 @@ export default function ApprovalsPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTab]);
 
-  const handleViewDetail = (item) => {
+  useEffect(() => {
+    fetchApprovals();
+  }, [fetchApprovals]);
+
+  const handleViewDetail = (item: ApprovalItem) => {
     const detail = { ...item, items: [] };
     setSelectedApproval(detail);
     setDetailDialogOpen(true);
   };
 
-  const handleApprove = (item) => {
+  const handleApprove = (item: ApprovalItem) => {
     try {
       const items = getApprovals();
       const updatedItems = items.map(i => {
@@ -137,7 +130,7 @@ export default function ApprovalsPage() {
     }
   };
 
-  const handleReject = (item) => {
+  const handleReject = (item: ApprovalItem) => {
     try {
       const items = getApprovals();
       const updatedItems = items.map(i => {
@@ -156,7 +149,7 @@ export default function ApprovalsPage() {
     }
   };
 
-  const getTypeIcon = (type) => {
+  const getTypeIcon = (type: string) => {
     switch (type) {
       case 'inbound': return <ArrowDownToLine className="h-4 w-4 text-green-500" />;
       case 'outbound': return <ArrowUpFromLine className="h-4 w-4 text-blue-500" />;
@@ -166,13 +159,13 @@ export default function ApprovalsPage() {
     }
   };
 
-  const getTypeLabel = (type) => {
-    const typeMap = { inbound: '入库', outbound: '出库', stock_count: '盘点', transfer: '调拨' };
+  const getTypeLabel = (type: string) => {
+    const typeMap: Record<string, string> = { inbound: '入库', outbound: '出库', stock_count: '盘点', transfer: '调拨' };
     return typeMap[type] || type;
   };
 
-  const getStatusBadge = (status) => {
-    const statusMap = {
+  const getStatusBadge = (status: string) => {
+    const statusMap: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
       pending: { label: '待审核', variant: 'secondary' },
       approved: { label: '已审核', variant: 'default' },
       completed: { label: '已完成', variant: 'default' },
@@ -182,7 +175,7 @@ export default function ApprovalsPage() {
     return <Badge variant={config.variant}>{config.label}</Badge>;
   };
 
-  const formatDate = (dateString) => {
+  const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleString('zh-CN');
   };
 
@@ -374,7 +367,7 @@ export default function ApprovalsPage() {
             <DialogHeader>
               <DialogTitle>审核详情</DialogTitle>
               <DialogDescription>
-                {selectedApproval && `${getTypeLabel(selectedApproval.type)}单 - ${selectedApproval.order_no}`}
+                {`${getTypeLabel(selectedApproval.type)}单 - ${selectedApproval.order_no}`}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
