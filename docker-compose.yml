@@ -1,51 +1,20 @@
 version: '3.8'
 
 services:
-  warehouse-system:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: warehouse-management
-    restart: unless-stopped
+  warehouse:
+    build: .
+    container_name: warehouse-system
     ports:
-      - "3000:3000"
+      - "8080:8080"
     environment:
       - NODE_ENV=production
-      - TZ=Asia/Shanghai
-    volumes:
-      - warehouse-data:/app/data
-    networks:
-      - warehouse-network
+      # 数据库配置（可选，如不配置使用 Mock 数据）
+      # - NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
+      # - NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/api/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-
-  # 可选：Nginx 反向代理（如果需要）
-  nginx:
-    image: nginx:alpine
-    container_name: warehouse-nginx
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./nginx/ssl:/etc/nginx/ssl
-      - ./nginx/logs:/var/log/nginx
-    depends_on:
-      - warehouse-system
-    networks:
-      - warehouse-network
-    profiles:
-      - with-nginx
-
-volumes:
-  warehouse-data:
-    driver: local
-
-networks:
-  warehouse-network:
-    driver: bridge
