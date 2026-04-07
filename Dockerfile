@@ -2,17 +2,20 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
-# 复制依赖文件
-COPY package*.json ./
+# 安装 pnpm 和 wget（用于健康检查）
+RUN npm install -g pnpm && apk add --no-cache wget
 
-# 使用 npm 安装依赖
-RUN npm ci
+# 复制依赖文件
+COPY package*.json pnpm-lock.yaml* ./
+
+# 安装依赖
+RUN pnpm install --frozen-lockfile
 
 # 复制源代码
 COPY . .
 
 # 构建应用
-RUN npm run build
+RUN pnpm run build
 
 # 生产镜像
 FROM node:20-alpine AS runner
@@ -21,6 +24,9 @@ WORKDIR /app
 
 ENV NODE_ENV production
 ENV PORT 3000
+
+# 安装 wget（用于健康检查）
+RUN apk add --no-cache wget
 
 # 创建非 root 用户
 RUN addgroup -g 1001 -S nodejs
@@ -36,6 +42,10 @@ USER nextjs
 
 # 暴露端口
 EXPOSE 3000
+
+# 健康检查
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:3000/api/health || exit 1
 
 # 启动应用
 CMD ["node", "server.js"]

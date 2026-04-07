@@ -31,6 +31,7 @@ import {
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { PrintPdfExport, DocumentPrintLayout } from '@/components/print-pdf-export';
+import { useApprovalTodo } from '@/hooks/use-approval-todo';
 
 interface Warehouse {
   id: number;
@@ -150,6 +151,9 @@ export default function OutboundPage() {
   const [selectedProduct, setSelectedProduct] = useState('');
   const [itemQuantity, setItemQuantity] = useState('');
   const [itemPrice, setItemPrice] = useState('');
+  
+  // 使用审核待办 hook
+  const { refresh: refreshApprovalTodo } = useApprovalTodo();
 
   useEffect(() => {
     fetchOrders();
@@ -336,6 +340,9 @@ export default function OutboundPage() {
 
       setOrders(updatedOrders);
       localStorage.setItem('outbound_orders', JSON.stringify(updatedOrders));
+      
+      // 刷新审核待办提醒
+      refreshApprovalTodo();
     } catch (error) {
       console.error('审核出库单失败:', error);
       alert('审核失败，请重试');
@@ -357,6 +364,9 @@ export default function OutboundPage() {
 
       setOrders(updatedOrders);
       localStorage.setItem('outbound_orders', JSON.stringify(updatedOrders));
+      
+      // 刷新审核待办提醒
+      refreshApprovalTodo();
     } catch (error) {
       console.error('拒绝出库单失败:', error);
       alert('操作失败，请重试');

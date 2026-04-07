@@ -22,6 +22,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { useApprovalTodo } from '@/hooks/use-approval-todo';
 
 interface ApprovalItem {
   id: number;
@@ -54,6 +55,9 @@ export default function ApprovalsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedApproval, setSelectedApproval] = useState<ApprovalItem | null>(null);
+  
+  // 使用审核待办 hook
+  const { refresh: refreshApprovalTodo } = useApprovalTodo();
 
   const fetchApprovals = useCallback(async () => {
     setLoading(true);
@@ -116,6 +120,8 @@ export default function ApprovalsPage() {
       if (response.ok) {
         alert('审核通过成功！');
         fetchApprovals();
+        // 刷新审核待办提醒
+        refreshApprovalTodo();
       } else {
         const error = await response.json();
         throw new Error(error.error || '审核失败');
@@ -135,6 +141,8 @@ export default function ApprovalsPage() {
         localStorage.setItem('approvals', JSON.stringify(updatedItems));
         alert('审核通过成功（已保存到本地）！');
         fetchApprovals();
+        // 刷新审核待办提醒
+        refreshApprovalTodo();
       } catch (localStorageError) {
         alert('审核失败，请重试');
       }
@@ -158,6 +166,8 @@ export default function ApprovalsPage() {
       if (response.ok) {
         alert('审核拒绝成功！');
         fetchApprovals();
+        // 刷新审核待办提醒
+        refreshApprovalTodo();
       } else {
         const error = await response.json();
         throw new Error(error.error || '操作失败');
@@ -177,6 +187,8 @@ export default function ApprovalsPage() {
         localStorage.setItem('approvals', JSON.stringify(updatedItems));
         alert('审核拒绝成功（已保存到本地）！');
         fetchApprovals();
+        // 刷新审核待办提醒
+        refreshApprovalTodo();
       } catch (localStorageError) {
         alert('操作失败，请重试');
       }
