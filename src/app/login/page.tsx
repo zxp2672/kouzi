@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
+import { loginUser, initDefaultUsers } from '@/services/user-service';
 
 const DEFAULT_CONFIG = {
   unit_name: 'XX市公安局',
@@ -46,6 +47,8 @@ export default function LoginPage() {
 
   useEffect(() => {
     setConfig(getSystemConfig());
+    // 初始化默认用户密码
+    initDefaultUsers().catch(console.error);
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -54,19 +57,26 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // 模拟登录验证
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      // 真实登录验证
+      const user = await loginUser(formData.username, formData.password);
       
-      // 简单的演示登录逻辑
-      if (formData.username && formData.password) {
+      if (user) {
         // 保存登录状态到 localStorage
         localStorage.setItem('isLoggedIn', 'true');
-        localStorage.setItem('username', formData.username);
+        localStorage.setItem('username', user.username);
+        localStorage.setItem('currentUser', JSON.stringify({
+          id: user.id,
+          username: user.username,
+          name: user.name,
+          role_id: user.role_id,
+          organization_id: user.organization_id,
+          department: user.department,
+        }));
         
         // 跳转到首页
         router.push('/');
       } else {
-        setError('请输入用户名和密码');
+        setError('用户名或密码错误');
       }
     } catch (err) {
       setError('登录失败，请重试');
@@ -173,9 +183,11 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            {/* 演示提示 */}
-            <div className="mt-6 text-center text-sm text-gray-500">
-              <p>演示账号：任意用户名 + 任意密码</p>
+            {/* 默认账号提示 */}
+            <div className="mt-6 p-3 bg-blue-50 rounded-lg text-sm text-gray-600">
+              <p className="font-medium text-blue-700 mb-1">默认账号：</p>
+              <p>管理员：admin / admin123</p>
+              <p>库管员：manager / 123456</p>
             </div>
           </CardContent>
         </Card>

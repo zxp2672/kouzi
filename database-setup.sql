@@ -174,10 +174,13 @@ CREATE TABLE IF NOT EXISTS roles (
 CREATE TABLE IF NOT EXISTS users (
   id SERIAL PRIMARY KEY,
   username VARCHAR(100) UNIQUE NOT NULL,
+  password_hash VARCHAR(255),
+  name VARCHAR(200),
   email VARCHAR(200),
   phone VARCHAR(20),
   organization_id INTEGER REFERENCES organizations(id),
   role_id INTEGER REFERENCES roles(id),
+  department VARCHAR(200),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ

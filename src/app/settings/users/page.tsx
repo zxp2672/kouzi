@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Search, User, Shield, Building2 } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, User, Shield, Building2, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -49,7 +49,9 @@ import {
   fetchUsers, 
   createUser, 
   updateUser, 
-  deleteUser 
+  deleteUser,
+  resetPassword,
+  hashPassword
 } from '@/services/user-service';
 import { Organization, fetchOrganizations } from '@/services/organization-service';
 import { Role, fetchRoles } from '@/services/role-service';
@@ -57,6 +59,7 @@ import { Role, fetchRoles } from '@/services/role-service';
 interface UserForm {
   username: string;
   name: string;
+  password: string;
   email: string;
   phone: string;
   role_id: string;
@@ -74,9 +77,13 @@ export default function UsersPage() {
   const [editingUser, setEditingUser] = useState<UserType | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingUser, setDeletingUser] = useState<UserType | null>(null);
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [resetPasswordUser, setResetPasswordUser] = useState<UserType | null>(null);
+  const [newPassword, setNewPassword] = useState('123456');
   const [form, setForm] = useState<UserForm>({
     username: '',
     name: '',
+    password: '',
     email: '',
     phone: '',
     role_id: '',
@@ -114,6 +121,7 @@ export default function UsersPage() {
       setForm({
         username: user.username,
         name: user.name,
+        password: '',
         email: user.email || '',
         phone: user.phone || '',
         role_id: user.role_id?.toString() || '',
@@ -125,6 +133,7 @@ export default function UsersPage() {
       setForm({
         username: '',
         name: '',
+        password: '',
         email: '',
         phone: '',
         role_id: '',
@@ -142,9 +151,16 @@ export default function UsersPage() {
         return;
       }
 
+      // 新增用户时必须设置密码
+      if (!editingUser && !form.password) {
+        toast.error('请设置初始密码');
+        return;
+      }
+
       const formData: UserFormData = {
         username: form.username,
         name: form.name,
+        password: form.password || undefined,
         email: form.email || undefined,
         phone: form.phone || undefined,
         role_id: form.role_id ? parseInt(form.role_id) : undefined,
@@ -181,6 +197,25 @@ export default function UsersPage() {
     } catch (error) {
       console.error('删除用户失败:', error);
       toast.error('删除失败，请重试');
+    }
+  };
+
+  const handleResetPassword = async () => {
+    if (!resetPasswordUser || !newPassword) return;
+
+    try {
+      const success = await resetPassword(resetPasswordUser.id, newPassword);
+      if (success) {
+        toast.success(`已重置 ${resetPasswordUser.name} 的密码`);
+      } else {
+        toast.error('重置密码失败');
+      }
+      setResetPasswordDialogOpen(false);
+      setResetPasswordUser(null);
+      setNewPassword('123456');
+    } catch (error) {
+      console.error('重置密码失败:', error);
+      toast.error('重置密码失败，请重试');
     }
   };
 
@@ -285,6 +320,7 @@ export default function UsersPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            title="编辑"
                             onClick={() => handleOpenDialog(user)}
                           >
                             <Pencil className="h-4 w-4" />
@@ -292,6 +328,19 @@ export default function UsersPage() {
                           <Button
                             variant="ghost"
                             size="icon"
+                            title="重置密码"
+                            onClick={() => {
+                              setResetPasswordUser(user);
+                              setNewPassword('123456');
+                              setResetPasswordDialogOpen(true);
+                            }}
+                          >
+                            <KeyRound className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            title="删除"
                             onClick={() => {
                               setDeletingUser(user);
                               setDeleteDialogOpen(true);
@@ -340,6 +389,18 @@ export default function UsersPage() {
                   placeholder="请输入姓名"
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">
+                {editingUser ? '密码（留空则不修改）' : '初始密码 *'}
+              </Label>
+              <Input
+                id="password"
+                type="password"
+                value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value})}
+                placeholder={editingUser ? '留空则不修改密码' : '请设置初始密码'}
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -428,6 +489,41 @@ export default function UsersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 重置密码对话框 */}
+      <Dialog open={resetPasswordDialogOpen} onOpenChange={setResetPasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>重置密码</DialogTitle>
+            <DialogDescription>
+              为用户 &quot;{resetPasswordUser?.name}&quot; 设置新密码
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="newPassword">新密码</Label>
+              <Input
+                id="newPassword"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="请输入新密码"
+              />
+            </div>
+            <p className="text-sm text-muted-foreground">
+              默认密码为 123456，可自行修改
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={handleResetPassword}>
+              确认重置
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

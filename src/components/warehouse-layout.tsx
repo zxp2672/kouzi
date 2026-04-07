@@ -83,7 +83,14 @@ export default function WarehouseLayout({ children }: LayoutProps) {
     const loggedIn = localStorage.getItem('isLoggedIn') === 'true';
     const user = localStorage.getItem('username') || '';
     setIsLoggedIn(loggedIn);
-    setUsername(user);
+    
+    // 优先显示真实姓名
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      setUsername(currentUser.name || user);
+    } catch {
+      setUsername(user);
+    }
 
     // 读取系统配置
     setConfig(getSystemConfig());
@@ -114,6 +121,7 @@ export default function WarehouseLayout({ children }: LayoutProps) {
   const handleLogout = () => {
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('username');
+    localStorage.removeItem('currentUser');
     setIsLoggedIn(false);
     setUsername('');
     router.push('/login');
