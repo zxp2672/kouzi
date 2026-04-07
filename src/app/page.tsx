@@ -24,6 +24,9 @@ import { getInventoryStats, getLowStockAlerts } from '@/services/inventory-servi
 import { fetchInboundOrders } from '@/services/inbound-service';
 import { fetchOutboundOrders } from '@/services/outbound-service';
 import { fetchTransferOrders } from '@/services/transfer-service';
+import { fetchStockCounts } from '@/services/stockcount-service';
+import { fetchProducts } from '@/services/product-service';
+import { fetchWarehouses } from '@/services/warehouse-service';
 import { fetchSystemConfigs, getSystemConfigSync } from '@/services/system-config-service';
 
 // 动画数字组件
@@ -91,31 +94,26 @@ interface RecentActivity {
   created_at: string;
 }
 
-// 模拟数据
-const MOCK_LOW_STOCK: LowStockItem[] = [
-  { id: 1, product_code: 'CP001', product_name: '防暴盾牌', warehouse_name: '市局中心仓库', quantity: 5, min_stock: 20 },
-  { id: 2, product_code: 'CP002', product_name: '对讲机', warehouse_name: 'XX区分库', quantity: 8, min_stock: 15 },
-  { id: 3, product_code: 'CP003', product_name: '警用装备包', warehouse_name: 'XX派出所仓库', quantity: 3, min_stock: 10 },
-];
-
-const MOCK_RECENT_ACTIVITIES: RecentActivity[] = [
-  { id: 1, type: '入库', order_no: 'IB202404001', warehouse_name: '市局中心仓库', status: 'pending', created_at: new Date(Date.now() - 3600000).toISOString() },
-  { id: 2, type: '出库', order_no: 'OB202404001', warehouse_name: 'XX区分库', status: 'approved', created_at: new Date(Date.now() - 7200000).toISOString() },
-  { id: 3, type: '入库', order_no: 'IB202403099', warehouse_name: 'XX派出所仓库', status: 'completed', created_at: new Date(Date.now() - 86400000).toISOString() },
-  { id: 4, type: '调拨', order_no: 'TF202404001', warehouse_name: '市局中心仓库', status: 'pending', created_at: new Date(Date.now() - 1800000).toISOString() },
-];
+// 辅助函数：判断是否是今天的日期
+function isToday(dateStr: string): boolean {
+  const date = new Date(dateStr);
+  const today = new Date();
+  return date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate();
+}
 
 export default function DashboardPage() {
   const [currentTime, setCurrentTime] = useState(new Date());
   const [stats, setStats] = useState({
-    totalProducts: 156,
-    totalWarehouses: 3,
-    totalStock: 2458,
-    lowStockItems: 3,
-    todayInbound: 12,
-    todayOutbound: 8,
-    pendingApprovals: 5,
-    stockValue: 1258600,
+    totalProducts: 0,
+    totalWarehouses: 0,
+    totalStock: 0,
+    lowStockItems: 0,
+    todayInbound: 0,
+    todayOutbound: 0,
+    pendingApprovals: 0,
+    stockValue: 0,
   });
   const [lowStockList, setLowStockList] = useState<LowStockItem[]>([]);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
@@ -177,69 +175,102 @@ export default function DashboardPage() {
     try {
       setLoading(true);
       
-      // 获取真实库存统计
-      const inventoryStats = await getInventoryStats();
-      
-      // 获取低库存预警
-      const lowStockItems = await getLowStockAlerts(10);
-      setLowStockList(lowStockItems as any);
-      
-      // 获取最近活动
-      try {
-        const [inboundOrders, outboundOrders, transferOrders] = await Promise.all([
-          fetchInboundOrders(),
-          fetchOutboundOrders(),
-          fetchTransferOrders()
-        ]);
-        
-        // 合并并按时间排序
-        const allActivities = [
-          ...inboundOrders.slice(0, 5).map(o => ({
-            id: o.id,
-            type: '入库',
-            order_no: o.order_no,
-            warehouse_name: '仓库',
-            status: o.status,
-            created_at: o.created_at
-          })),
-          ...outboundOrders.slice(0, 5).map(o => ({
-            id: o.id + 1000,
-            type: '出库',
-            order_no: o.order_no,
-            warehouse_name: '仓库',
-            status: o.status,
-            created_at: o.created_at
-          })),
-          ...transferOrders.slice(0, 5).map(o => ({
-            id: o.id + 2000,
-            type: '调拨',
-            order_no: o.order_no,
-            warehouse_name: '仓库',
-            status: o.status,
-            created_at: o.created_at
-          }))
-        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-         .slice(0, 10);
-        
-        setRecentActivities(allActivities as any);
-      } catch (e) {
-        console.error('获取活动记录失败，使用模拟数据', e);
-        setRecentActivities(MOCK_RECENT_ACTIVITIES);
-      }
-      
+      // 并行获取所有数据
+      const [
+        inventoryStats,
+        lowStockItems,
+        products,
+        warehouses,
+        inboundOrders,
+        outboundOrders,
+        transferOrders,
+        stockCounts,
+      ] = await Promise.all([
+        getInventoryStats().catch(() => ({ totalProducts: 0, totalQuantity: 0, lowStockCount: 0, warehouseCount: 0 })),
+        getLowStockAlerts(10).catch(() => []),
+        fetchProducts().catch(() => []),
+        fetchWarehouses().catch(() => []),
+        fetchInboundOrders().catch(() => []),
+        fetchOutboundOrders().catch(() => []),
+        fetchTransferOrders().catch(() => []),
+        fetchStockCounts().catch(() => []),
+      ]);
+
+      // 构建仓库 ID → 名称映射
+      const warehouseMap: Record<number, string> = {};
+      warehouses.forEach(w => { warehouseMap[w.id] = w.name; });
+
+      // 计算今日入库/出库数量
+      const todayInbound = inboundOrders.filter(o => isToday(o.created_at)).length;
+      const todayOutbound = outboundOrders.filter(o => isToday(o.created_at)).length;
+
+      // 计算待审核总数
+      const pendingInbound = inboundOrders.filter(o => o.status === 'pending').length;
+      const pendingOutbound = outboundOrders.filter(o => o.status === 'pending').length;
+      const pendingTransfer = transferOrders.filter(o => o.status === 'pending').length;
+      const pendingStockCount = stockCounts.filter(o => o.status === 'pending').length;
+      const pendingApprovals = pendingInbound + pendingOutbound + pendingTransfer + pendingStockCount;
+
+      // 计算库存总价值（基于产品采购价 * 库存数量，简化为产品数 * 平均价）
+      const stockValue = products.reduce((sum, p) => {
+        const price = parseFloat(p.purchase_price || '0') || 0;
+        return sum + price;
+      }, 0) * (inventoryStats.totalQuantity / Math.max(products.length, 1));
+
       // 更新统计数据
       setStats({
-        ...stats,
+        totalProducts: products.length,
+        totalWarehouses: inventoryStats.warehouseCount || warehouses.length,
         totalStock: inventoryStats.totalQuantity,
         lowStockItems: inventoryStats.lowStockCount,
-        totalWarehouses: inventoryStats.warehouseCount,
+        todayInbound,
+        todayOutbound,
+        pendingApprovals,
+        stockValue: Math.round(stockValue),
       });
+
+      // 低库存列表 - 映射字段
+      setLowStockList(lowStockItems.map(item => ({
+        id: item.id,
+        product_code: item.product?.code || `P${item.product_id}`,
+        product_name: item.product?.name || '未知商品',
+        warehouse_name: item.warehouse?.name || warehouseMap[item.warehouse_id] || '未知仓库',
+        quantity: item.quantity,
+        min_stock: (item.product as any)?.min_stock || 10,
+      })));
       
+      // 最近活动 - 合并入库、出库、调拨并按时间排序
+      const allActivities: RecentActivity[] = [
+        ...inboundOrders.slice(0, 5).map(o => ({
+          id: o.id,
+          type: '入库',
+          order_no: o.order_no,
+          warehouse_name: warehouseMap[o.warehouse_id] || '未知仓库',
+          status: o.status,
+          created_at: o.created_at,
+        })),
+        ...outboundOrders.slice(0, 5).map(o => ({
+          id: o.id + 10000,
+          type: '出库',
+          order_no: o.order_no,
+          warehouse_name: warehouseMap[o.warehouse_id] || '未知仓库',
+          status: o.status,
+          created_at: o.created_at,
+        })),
+        ...transferOrders.slice(0, 5).map(o => ({
+          id: o.id + 20000,
+          type: '调拨',
+          order_no: o.order_no,
+          warehouse_name: warehouseMap[o.from_warehouse_id] || '未知仓库',
+          status: o.status,
+          created_at: o.created_at,
+        })),
+      ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+       .slice(0, 10);
+      
+      setRecentActivities(allActivities);
     } catch (error) {
       console.error('获取仪表盘数据失败:', error);
-      // 失败时使用模拟数据
-      setLowStockList(MOCK_LOW_STOCK);
-      setRecentActivities(MOCK_RECENT_ACTIVITIES);
     } finally {
       setLoading(false);
     }
