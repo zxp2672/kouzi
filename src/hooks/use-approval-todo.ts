@@ -1,6 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { fetchInboundOrders } from '@/services/inbound-service';
+import { fetchOutboundOrders } from '@/services/outbound-service';
+import { fetchStockCounts } from '@/services/stockcount-service';
+import { fetchTransferOrders } from '@/services/transfer-service';
 
 interface TodoStats {
   total: number;
@@ -24,7 +28,7 @@ export function useApprovalTodo() {
     try {
       setLoading(true);
       
-      // 从 localStorage 获取实际的待审核数据
+      // 从数据库获取实际的待审核数据
       let inboundCount = 0;
       let outboundCount = 0;
       let stockCountCount = 0;
@@ -32,44 +36,32 @@ export function useApprovalTodo() {
 
       try {
         // 获取入库单待审核数量
-        const inboundOrders = localStorage.getItem('inbound_orders');
-        if (inboundOrders) {
-          const orders = JSON.parse(inboundOrders);
-          inboundCount = orders.filter((o: any) => o.status === 'pending').length;
-        }
+        const inboundOrders = await fetchInboundOrders();
+        inboundCount = inboundOrders.filter(o => o.status === 'pending').length;
       } catch (e) {
         console.error('获取入库单统计失败:', e);
       }
 
       try {
         // 获取出库单待审核数量
-        const outboundOrders = localStorage.getItem('outbound_orders');
-        if (outboundOrders) {
-          const orders = JSON.parse(outboundOrders);
-          outboundCount = orders.filter((o: any) => o.status === 'pending').length;
-        }
+        const outboundOrders = await fetchOutboundOrders();
+        outboundCount = outboundOrders.filter(o => o.status === 'pending').length;
       } catch (e) {
         console.error('获取出库单统计失败:', e);
       }
 
       try {
         // 获取盘点单待审核数量
-        const stockCounts = localStorage.getItem('stock_counts');
-        if (stockCounts) {
-          const counts = JSON.parse(stockCounts);
-          stockCountCount = counts.filter((c: any) => c.status === 'pending').length;
-        }
+        const stockCounts = await fetchStockCounts();
+        stockCountCount = stockCounts.filter(c => c.status === 'pending').length;
       } catch (e) {
         console.error('获取盘点单统计失败:', e);
       }
 
       try {
         // 获取调拨单待审核数量
-        const transferOrders = localStorage.getItem('transfer_orders');
-        if (transferOrders) {
-          const orders = JSON.parse(transferOrders);
-          transferCount = orders.filter((o: any) => o.status === 'pending').length;
-        }
+        const transferOrders = await fetchTransferOrders();
+        transferCount = transferOrders.filter(o => o.status === 'pending').length;
       } catch (e) {
         console.error('获取调拨单统计失败:', e);
       }
@@ -93,7 +85,7 @@ export function useApprovalTodo() {
   useEffect(() => {
     fetchTodoStats();
     
-    // 监听 storage 变化，实现跨页面同步
+    // 监听 storage 变化（localStorage 模式）
     const handleStorageChange = (e: StorageEvent) => {
       if (e.key === 'inbound_orders' || 
           e.key === 'outbound_orders' || 
@@ -106,7 +98,7 @@ export function useApprovalTodo() {
 
     window.addEventListener('storage', handleStorageChange);
     
-    // 定期检查更新（每 5 秒）
+    // 定期检查更新（每 5 秒）- 同时支持数据库和 localStorage
     const interval = setInterval(fetchTodoStats, 5000);
 
     return () => {
