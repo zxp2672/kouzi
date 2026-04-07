@@ -1,0 +1,13 @@
+{
+  "name": "warehouse-system",
+  "version": "1.0.0",
+  "buildCommand": "pnpm install && pnpm build",
+  "outputDirectory": ".next",
+  "installCommand": "pnpm install",
+  "framework": "nextjs",
+  "runtime": "nodejs20",
+  "env": {
+    "NODE_ENV": "production",
+    "PORT": "3000"
+  }
+}
