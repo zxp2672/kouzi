@@ -21,6 +21,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
 import ApprovalTodoBadge from '@/components/approval-todo-badge';
+import { fetchSystemConfigs, getSystemConfigSync } from '@/services/system-config-service';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,24 +52,6 @@ const DEFAULT_CONFIG = {
   copyright_text: '© 2024 XX市公安局 版权所有',
 };
 
-const getSystemConfig = () => {
-  try {
-    const savedConfigs = localStorage.getItem('system_configs');
-    if (savedConfigs) {
-      const parsed = JSON.parse(savedConfigs);
-      return {
-        unit_name: parsed.unit_name || DEFAULT_CONFIG.unit_name,
-        unit_logo_url: parsed.unit_logo_url || DEFAULT_CONFIG.unit_logo_url,
-        system_title: parsed.system_title || DEFAULT_CONFIG.system_title,
-        copyright_text: parsed.copyright_text || DEFAULT_CONFIG.copyright_text,
-      };
-    }
-  } catch (error) {
-    console.error('读取系统配置失败:', error);
-  }
-  return DEFAULT_CONFIG;
-};
-
 export default function WarehouseLayout({ children }: LayoutProps) {
   const pathname = usePathname();
   const router = useRouter();
@@ -92,8 +75,9 @@ export default function WarehouseLayout({ children }: LayoutProps) {
       setUsername(user);
     }
 
-    // 读取系统配置
-    setConfig(getSystemConfig());
+    // 先用同步缓存，再异步从数据库加载
+    setConfig(getSystemConfigSync());
+    fetchSystemConfigs().then(cfg => setConfig(cfg)).catch(console.error);
 
     // 如果未登录且不在登录页，跳转到登录页
     if (!loggedIn && pathname !== '/login') {

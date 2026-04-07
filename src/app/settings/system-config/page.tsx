@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
 import { toast } from 'sonner';
+import { fetchSystemConfigs, saveSystemConfigs, SystemConfigMap } from '@/services/system-config-service';
 
 interface SystemConfig {
   id: number;
@@ -60,23 +61,7 @@ export default function SystemConfigPage() {
     try {
       setLoading(true);
       
-      // 构建配置对象
-      const configMap: Record<string, string> = {};
-      
-      // 先设置默认值
-      DEFAULT_CONFIGS.forEach(config => {
-        configMap[config.key] = config.value;
-      });
-
-      // 然后用 localStorage 中的值覆盖
-      const savedConfigs = localStorage.getItem('system_configs');
-      if (savedConfigs) {
-        const parsedConfigs = JSON.parse(savedConfigs);
-        Object.keys(parsedConfigs).forEach(key => {
-          configMap[key] = parsedConfigs[key];
-        });
-      }
-
+      const configMap = await fetchSystemConfigs();
       setConfigs(configMap);
       setLogoPreview(configMap['unit_logo_url'] || null);
     } catch (error) {
@@ -96,10 +81,9 @@ export default function SystemConfigPage() {
     try {
       setSaving(true);
       
-      // 保存到 localStorage
-      localStorage.setItem('system_configs', JSON.stringify(configs));
+      await saveSystemConfigs(configs as SystemConfigMap);
       
-      toast.success('保存成功！配置已更新');
+      toast.success('保存成功！配置已同步到数据库');
     } catch (error) {
       console.error('保存配置失败:', error);
       toast.error('保存失败，请重试');

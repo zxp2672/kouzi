@@ -186,6 +186,29 @@ CREATE TABLE IF NOT EXISTS users (
   updated_at TIMESTAMPTZ
 );
 
+-- 15. 系统配置表
+CREATE TABLE IF NOT EXISTS system_configs (
+  id SERIAL PRIMARY KEY,
+  config_key VARCHAR(100) UNIQUE NOT NULL,
+  config_value TEXT,
+  config_type VARCHAR(50) DEFAULT 'string',
+  description TEXT,
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 16. 审核流程表
+CREATE TABLE IF NOT EXISTS approval_flows (
+  id SERIAL PRIMARY KEY,
+  code VARCHAR(50) NOT NULL,
+  name VARCHAR(200) NOT NULL,
+  type VARCHAR(50) NOT NULL,
+  organization VARCHAR(100),
+  steps JSONB DEFAULT '[]'::jsonb,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ
+);
+
 -- ==========================================
 -- 创建索引
 -- ==========================================
@@ -227,6 +250,8 @@ ALTER TABLE inventory ENABLE ROW LEVEL SECURITY;
 ALTER TABLE organizations ENABLE ROW LEVEL SECURITY;
 ALTER TABLE roles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE system_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE approval_flows ENABLE ROW LEVEL SECURITY;
 
 -- 创建公开访问策略（临时，用于开发测试）
 -- 生产环境应该根据实际需求设置更严格的策略
@@ -301,6 +326,16 @@ CREATE POLICY "公开写入_users" ON users FOR INSERT WITH CHECK (true);
 CREATE POLICY "公开更新_users" ON users FOR UPDATE USING (true);
 CREATE POLICY "公开删除_users" ON users FOR DELETE USING (true);
 
+CREATE POLICY "公开读取_system_configs" ON system_configs FOR SELECT USING (true);
+CREATE POLICY "公开写入_system_configs" ON system_configs FOR INSERT WITH CHECK (true);
+CREATE POLICY "公开更新_system_configs" ON system_configs FOR UPDATE USING (true);
+CREATE POLICY "公开删除_system_configs" ON system_configs FOR DELETE USING (true);
+
+CREATE POLICY "公开读取_approval_flows" ON approval_flows FOR SELECT USING (true);
+CREATE POLICY "公开写入_approval_flows" ON approval_flows FOR INSERT WITH CHECK (true);
+CREATE POLICY "公开更新_approval_flows" ON approval_flows FOR UPDATE USING (true);
+CREATE POLICY "公开删除_approval_flows" ON approval_flows FOR DELETE USING (true);
+
 -- ==========================================
 -- 插入初始数据
 -- ==========================================
@@ -318,3 +353,11 @@ INSERT INTO warehouses (code, name, address, manager, phone) VALUES
 ('WH002', '分仓库A', '上海市浦东新区', '李四', '13900139000'),
 ('WH003', '分仓库B', '广州市天河区', '王五', '13700137000')
 ON CONFLICT DO NOTHING;
+
+-- 默认系统配置
+INSERT INTO system_configs (config_key, config_value, config_type, description) VALUES
+('unit_name', 'XX市公安局', 'string', '单位名称，显示在登录页和系统标题中'),
+('unit_logo_url', '', 'image', '单位Logo图片URL'),
+('system_title', '库房管理系统', 'string', '系统标题'),
+('copyright_text', '© 2024 XX市公安局 版权所有', 'string', '版权信息')
+ON CONFLICT (config_key) DO NOTHING;

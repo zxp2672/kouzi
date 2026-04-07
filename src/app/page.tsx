@@ -24,6 +24,7 @@ import { getInventoryStats, getLowStockAlerts } from '@/services/inventory-servi
 import { fetchInboundOrders } from '@/services/inbound-service';
 import { fetchOutboundOrders } from '@/services/outbound-service';
 import { fetchTransferOrders } from '@/services/transfer-service';
+import { fetchSystemConfigs, getSystemConfigSync } from '@/services/system-config-service';
 
 // 动画数字组件
 function AnimatedNumber({ value, duration = 2000 }: { value: number; duration?: number }) {
@@ -129,27 +130,23 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboardData();
-    loadSystemConfig();
+    // 先用同步缓存，再异步从数据库加载
+    const cached = getSystemConfigSync();
+    setSystemConfig({
+      unit_name: cached.unit_name || 'XX市公安局',
+      unit_logo_url: cached.unit_logo_url || '',
+      system_title: cached.system_title || '库房管理系统',
+    });
+    fetchSystemConfigs().then(cfg => {
+      setSystemConfig({
+        unit_name: cfg.unit_name || 'XX市公安局',
+        unit_logo_url: cfg.unit_logo_url || '',
+        system_title: cfg.system_title || '库房管理系统',
+      });
+    }).catch(console.error);
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  // 加载系统配置
-  const loadSystemConfig = () => {
-    try {
-      const savedConfigs = localStorage.getItem('system_configs');
-      if (savedConfigs) {
-        const parsed = JSON.parse(savedConfigs);
-        setSystemConfig({
-          unit_name: parsed.unit_name || 'XX市公安局',
-          unit_logo_url: parsed.unit_logo_url || '',
-          system_title: parsed.system_title || '库房管理系统',
-        });
-      }
-    } catch (error) {
-      console.error('读取系统配置失败:', error);
-    }
-  };
 
   // 全屏切换
   const toggleFullscreen = useCallback(() => {

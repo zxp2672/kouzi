@@ -8,30 +8,13 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { loginUser, initDefaultUsers } from '@/services/user-service';
+import { fetchSystemConfigs, getSystemConfigSync } from '@/services/system-config-service';
 
 const DEFAULT_CONFIG = {
   unit_name: 'XX市公安局',
   unit_logo_url: '',
   system_title: '库房管理系统',
   copyright_text: '© 2024 XX市公安局 版权所有',
-};
-
-const getSystemConfig = () => {
-  try {
-    const savedConfigs = localStorage.getItem('system_configs');
-    if (savedConfigs) {
-      const parsed = JSON.parse(savedConfigs);
-      return {
-        unit_name: parsed.unit_name || DEFAULT_CONFIG.unit_name,
-        unit_logo_url: parsed.unit_logo_url || DEFAULT_CONFIG.unit_logo_url,
-        system_title: parsed.system_title || DEFAULT_CONFIG.system_title,
-        copyright_text: parsed.copyright_text || DEFAULT_CONFIG.copyright_text,
-      };
-    }
-  } catch (error) {
-    console.error('读取系统配置失败:', error);
-  }
-  return DEFAULT_CONFIG;
 };
 
 export default function LoginPage() {
@@ -46,7 +29,12 @@ export default function LoginPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    setConfig(getSystemConfig());
+    // 先用同步缓存，再异步从数据库加载
+    const cached = getSystemConfigSync();
+    setConfig(cached);
+    
+    fetchSystemConfigs().then(cfg => setConfig(cfg)).catch(console.error);
+    
     // 初始化默认用户密码
     initDefaultUsers().catch(console.error);
   }, []);
