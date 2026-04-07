@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import {
   Package,
   ArrowDownToLine,
@@ -12,9 +12,12 @@ import {
   Activity,
   Clock,
   ChevronRight,
-  Zap
+  Zap,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
 
 // 动画数字组件
@@ -111,11 +114,38 @@ export default function DashboardPage() {
   const [lowStockList, setLowStockList] = useState<LowStockItem[]>([]);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchDashboardData();
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  // 全屏切换
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen();
+    } else {
+      document.exitFullscreen();
+    }
+  }, []);
+
+  // 监听全屏状态变化
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+      
+      // 通知父组件隐藏/显示边栏
+      window.postMessage(
+        { type: 'FULLSCREEN_CHANGE', isFullscreen: !!document.fullscreenElement },
+        '*'
+      );
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
   const fetchDashboardData = async () => {
@@ -142,47 +172,64 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white p-6 space-y-6 overflow-auto">
-      {/* 顶部标题栏 */}
-      <div className="flex items-center justify-between border-b border-white/10 pb-4">
-        <div className="flex items-center gap-4">
-          <div className="relative">
-            <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
-              <BarChart3 className="w-6 h-6 text-white" />
-            </div>
-            <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-              <Zap className="w-2.5 h-2.5 text-white" />
-            </div>
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
-              库房管理系统 - 数据大屏
-            </h1>
-            <p className="text-sm text-slate-400">实时监控 · 智能预警 · 数据驱动</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-6">
-          <div className="text-right">
-            <p className="text-xs text-slate-400">当前时间</p>
-            <p className="text-lg font-mono font-semibold">
-              {currentTime.toLocaleTimeString('zh-CN', { hour12: false })}
-            </p>
-          </div>
-          <div className="text-right">
-            <p className="text-xs text-slate-400">今日日期</p>
-            <p className="text-sm font-medium">
-              {currentTime.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
-            </p>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
-            <BlinkingDot color="bg-green-500" />
-            <span className="text-xs text-green-400">系统运行正常</span>
-          </div>
-        </div>
+    <div ref={containerRef} className={`relative bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white overflow-hidden ${isFullscreen ? 'h-screen w-screen' : 'min-h-screen'}`}>
+      {/* 全屏按钮 */}
+      <div className="absolute top-4 right-4 z-50">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleFullscreen}
+          className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20"
+        >
+          {isFullscreen ? (
+            <Minimize2 className="h-5 w-5" />
+          ) : (
+            <Maximize2 className="h-5 w-5" />
+          )}
+        </Button>
       </div>
 
-      {/* 核心指标卡片 */}
-      <div className="grid grid-cols-4 gap-4">
+      <div className={`p-6 space-y-6 overflow-auto ${isFullscreen ? 'h-screen pb-16' : ''}`}>
+        {/* 顶部标题栏 */}
+        <div className="flex items-center justify-between border-b border-white/10 pb-4">
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
+                <BarChart3 className="w-6 h-6 text-white" />
+              </div>
+              <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
+                <Zap className="w-2.5 h-2.5 text-white" />
+              </div>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
+                库房管理系统 - 数据大屏
+              </h1>
+              <p className="text-sm text-slate-400">实时监控 · 智能预警 · 数据驱动</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-6">
+            <div className="text-right">
+              <p className="text-xs text-slate-400">当前时间</p>
+              <p className="text-lg font-mono font-semibold">
+                {currentTime.toLocaleTimeString('zh-CN', { hour12: false })}
+              </p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-slate-400">今日日期</p>
+              <p className="text-sm font-medium">
+                {currentTime.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-green-500/10 border border-green-500/20 rounded-full">
+              <BlinkingDot color="bg-green-500" />
+              <span className="text-xs text-green-400">系统运行正常</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 核心指标卡片 */}
+        <div className="grid grid-cols-4 gap-4">
         {/* 商品总数 */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -514,6 +561,7 @@ export default function DashboardPage() {
             最后更新: {currentTime.toLocaleTimeString('zh-CN')}
           </div>
         </div>
+      </div>
       </div>
     </div>
   );

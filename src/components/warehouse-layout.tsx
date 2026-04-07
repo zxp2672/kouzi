@@ -76,6 +76,7 @@ export default function WarehouseLayout({ children }: LayoutProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
   const [config, setConfig] = useState(DEFAULT_CONFIG);
+  const [hideSidebar, setHideSidebar] = useState(false);
 
   useEffect(() => {
     // 检查登录状态
@@ -98,6 +99,18 @@ export default function WarehouseLayout({ children }: LayoutProps) {
     }
   }, [pathname, router]);
 
+  // 监听全屏状态变化
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'FULLSCREEN_CHANGE') {
+        setHideSidebar(event.data.isFullscreen);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
   const handleLogout = () => {
     localStorage.removeItem('isLoggedIn');
     localStorage.removeItem('username');
@@ -119,14 +132,15 @@ export default function WarehouseLayout({ children }: LayoutProps) {
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       {/* 移动端遮罩 */}
-      {sidebarOpen && (
+      {sidebarOpen && !hideSidebar && (
         <div
           className="fixed inset-0 z-40 bg-gray-900/50 lg:hidden"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* 侧边栏 */}
+      {/* 侧边栏 - 全屏时隐藏 */}
+      {!hideSidebar && (
       <aside
         className={cn(
           'fixed inset-y-0 left-0 z-50 w-64 bg-gradient-to-b from-blue-50 to-white dark:from-gray-900 dark:to-gray-800 border-r border-blue-200 dark:border-gray-700 transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0',
@@ -202,6 +216,7 @@ export default function WarehouseLayout({ children }: LayoutProps) {
           </div>
         </div>
       </aside>
+      )}
 
       {/* 主内容区域 */}
       <div className="flex flex-1 flex-col overflow-hidden">
