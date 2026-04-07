@@ -14,7 +14,8 @@ import {
   ChevronRight,
   Zap,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Image as ImageIcon
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -115,13 +116,36 @@ export default function DashboardPage() {
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [systemConfig, setSystemConfig] = useState({
+    unit_name: 'XX市公安局',
+    unit_logo_url: '',
+    system_title: '库房管理系统',
+  });
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     fetchDashboardData();
+    loadSystemConfig();
     const timer = setInterval(() => setCurrentTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
+
+  // 加载系统配置
+  const loadSystemConfig = () => {
+    try {
+      const savedConfigs = localStorage.getItem('system_configs');
+      if (savedConfigs) {
+        const parsed = JSON.parse(savedConfigs);
+        setSystemConfig({
+          unit_name: parsed.unit_name || 'XX市公安局',
+          unit_logo_url: parsed.unit_logo_url || '',
+          system_title: parsed.system_title || '库房管理系统',
+        });
+      }
+    } catch (error) {
+      console.error('读取系统配置失败:', error);
+    }
+  };
 
   // 全屏切换
   const toggleFullscreen = useCallback(() => {
@@ -193,19 +217,29 @@ export default function DashboardPage() {
         {/* 顶部标题栏 */}
         <div className="flex items-center justify-between border-b border-white/10 pb-4">
           <div className="flex items-center gap-4">
-            <div className="relative">
+            {/* Logo 显示 */}
+            {systemConfig.unit_logo_url ? (
+              <div className="w-12 h-12 bg-white/10 backdrop-blur-sm rounded-xl flex items-center justify-center border border-white/20 overflow-hidden">
+                <img
+                  src={systemConfig.unit_logo_url}
+                  alt="单位Logo"
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    e.currentTarget.style.display = 'none';
+                    e.currentTarget.parentElement!.innerHTML = '<div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-image w-6 h-6"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></div>';
+                  }}
+                />
+              </div>
+            ) : (
               <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-xl flex items-center justify-center shadow-lg shadow-blue-500/30">
                 <BarChart3 className="w-6 h-6 text-white" />
               </div>
-              <div className="absolute -top-1 -right-1 w-4 h-4 bg-green-500 rounded-full flex items-center justify-center">
-                <Zap className="w-2.5 h-2.5 text-white" />
-              </div>
-            </div>
+            )}
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-cyan-300 bg-clip-text text-transparent">
-                库房管理系统 - 数据大屏
+                {systemConfig.system_title} - 数据大屏
               </h1>
-              <p className="text-sm text-slate-400">实时监控 · 智能预警 · 数据驱动</p>
+              <p className="text-sm text-slate-400">{systemConfig.unit_name} · 实时监控 · 智能预警 · 数据驱动</p>
             </div>
           </div>
           <div className="flex items-center gap-6">
