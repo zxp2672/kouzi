@@ -1,17 +1,40 @@
 import { NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
 
-// 获取所有待审核的单据（入库、出库、盘点、调拨）
-export async function GET() {
+// 获取所有审核相关的单据（入库、出库、盘点、调拨）
+export async function GET(request: Request) {
   try {
     const client = getSupabaseClient();
     
-    // 并行获取所有待审核的单据
+    // 获取URL参数，支持按状态过滤
+    const url = new URL(request.url);
+    const statusFilter = url.searchParams.get('status'); // 'pending', 'approved', 'rejected', or null for all
+    
+    // 根据过滤条件构建查询
+    let statusCondition: string[] | undefined;
+    if (statusFilter === 'pending') {
+      statusCondition = ['pending'];
+    } else if (statusFilter === 'approved') {
+      statusCondition = ['approved', 'completed'];
+    } else if (statusFilter === 'rejected') {
+      statusCondition = ['rejected'];
+    }
+    // 如果不传status参数，返回所有状态
+    
+    const baseSelect = '*, warehouses(name)';
     const [inboundRes, outboundRes, stockCountRes, transferRes] = await Promise.all([
-      client.from('inbound_orders').select('*, warehouses(name)').in('status', ['pending']),
-      client.from('outbound_orders').select('*, warehouses(name)').in('status', ['pending']),
-      client.from('stock_counts').select('*, warehouses(name)').in('status', ['pending']),
-      client.from('transfer_orders').select('*, from_warehouse:warehouses!transfer_orders_from_warehouse_id_fkey(name), to_warehouse:warehouses!transfer_orders_to_warehouse_id_fkey(name)').in('status', ['pending'])
+      statusCondition 
+        ? client.from('inbound_orders').select(baseSelect).in('status', statusCondition)
+        : client.from('inbound_orders').select(baseSelect),
+      statusCondition
+        ? client.from('outbound_orders').select(baseSelect).in('status', statusCondition)
+        : client.from('outbound_orders').select(baseSelect),
+      statusCondition
+        ? client.from('stock_counts').select(baseSelect).in('status', statusCondition)
+        : client.from('stock_counts').select(baseSelect),
+      statusCondition
+        ? client.from('transfer_orders').select('*, from_warehouse:warehouses!transfer_orders_from_warehouse_id_fkey(name), to_warehouse:warehouses!transfer_orders_to_warehouse_id_fkey(name)').in('status', statusCondition)
+        : client.from('transfer_orders').select('*, from_warehouse:warehouses!transfer_orders_from_warehouse_id_fkey(name), to_warehouse:warehouses!transfer_orders_to_warehouse_id_fkey(name)')
     ]);
 
     // 处理入库单

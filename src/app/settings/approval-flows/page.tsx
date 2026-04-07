@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Search, FileCheck, Layers, ArrowRight } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, FileCheck, Layers, ArrowRight, GripVertical, X, ChevronsUp, ChevronUp, ChevronDown, ChevronsDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -41,6 +41,7 @@ import {
 } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import {
   ApprovalFlow,
@@ -51,6 +52,8 @@ import {
   updateApprovalFlow,
   deleteApprovalFlow,
 } from '@/services/approval-flow-service';
+import { fetchRoles, Role } from '@/services/role-service';
+import { fetchOrganizations, Organization } from '@/services/organization-service';
 
 interface ApprovalFlowForm {
   code: string;
@@ -68,20 +71,6 @@ const ORDER_TYPES = [
   { value: 'transfer', label: '调拨单' },
 ];
 
-// 组织列表
-const ORGANIZATIONS = [
-  { value: 'gaj', label: 'XX市公安局' },
-  { value: 'gac', label: 'XX区公安处' },
-  { value: 'pcs', label: 'XX派出所' },
-];
-
-// 角色列表
-const ROLES = [
-  { value: 'admin', label: '系统管理员' },
-  { value: 'manager', label: '部门管理员' },
-  { value: 'operator', label: '操作员' },
-];
-
 export default function ApprovalFlowsPage() {
   const [flows, setFlows] = useState<ApprovalFlow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -90,6 +79,14 @@ export default function ApprovalFlowsPage() {
   const [editingFlow, setEditingFlow] = useState<ApprovalFlow | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deletingFlow, setDeletingFlow] = useState<ApprovalFlow | null>(null);
+  
+  // 角色和组织数据
+  const [roles, setRoles] = useState<Role[]>([]);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
+  
+  // 审核步骤编辑
+  const [steps, setSteps] = useState<ApprovalStep[]>([]);
+
   const [form, setForm] = useState<ApprovalFlowForm>({
     code: '',
     name: '',
@@ -101,10 +98,16 @@ export default function ApprovalFlowsPage() {
   const fetchFlows = async () => {
     try {
       setLoading(true);
-      const savedFlows = await fetchApprovalFlows();
+      const [savedFlows, roleData, orgData] = await Promise.all([
+        fetchApprovalFlows(),
+        fetchRoles().catch(() => []),
+        fetchOrganizations().catch(() => []),
+      ]);
       setFlows(savedFlows);
+      setRoles(roleData.filter(r => r.is_active));
+      setOrganizations(orgData.filter(o => o.is_active));
     } catch (error) {
-      console.error('获取审核流程列表失败:', error);
+      console.error('获取数据失败:', error);
     } finally {
       setLoading(false);
     }
@@ -124,6 +127,9 @@ export default function ApprovalFlowsPage() {
         organization: flow.organization,
         is_active: flow.is_active,
       });
+      setSteps(flow.steps.length > 0 ? flow.steps : [
+        { id: 1, name: '操作员提交', order: 1, required_role: '', description: '操作员创建单据' },
+      ]);
     } else {
       setEditingFlow(null);
       setForm({
@@ -133,6 +139,9 @@ export default function ApprovalFlowsPage() {
         organization: '',
         is_active: true,
       });
+      setSteps([
+        { id: Date.now(), name: '操作员提交', order: 1, required_role: '', description: '操作员创建单据' },
+      ]);
     }
     setDialogOpen(true);
   };
@@ -143,12 +152,24 @@ export default function ApprovalFlowsPage() {
         toast.error('请填写必填字段');
         return;
       }
+      if (steps.length === 0) {
+        toast.error('请至少添加一个审核节点');
+        return;
+      }
+      // 校验每个节点都选择了角色
+      for (let i = 0; i < steps.length; i++) {
+        if (!steps[i].required_role) {
+          toast.error(`请为第${i + 1}个节点选择审核角色`);
+          return;
+        }
+      }
 
       const flowData: ApprovalFlowFormData = {
         code: form.code,
         name: form.name,
         type: form.type,
         organization: form.organization,
+        steps: steps.map((s, idx) => ({ ...s, order: idx + 1 })),
         is_active: form.is_active,
       };
 
@@ -183,16 +204,56 @@ export default function ApprovalFlowsPage() {
     }
   };
 
+  // 审核步骤管理函数
+  const addStep = () => {
+    const newStep: ApprovalStep = {
+      id: Date.now(),
+      name: `审核节点${steps.length + 1}`,
+      order: steps.length + 1,
+      required_role: '',
+      description: '',
+    };
+    setSteps([...steps, newStep]);
+  };
+
+  const removeStep = (id: number) => {
+    if (steps.length <= 1) {
+      toast.error('至少保留一个审核节点');
+      return;
+    }
+    setSteps(steps.filter(s => s.id !== id).map((s, idx) => ({ ...s, order: idx + 1 })));
+  };
+
+  const updateStep = (id: number, field: keyof ApprovalStep, value: string) => {
+    setSteps(steps.map(s => s.id === id ? { ...s, [field]: value } : s));
+  };
+
+  const moveStep = (index: number, direction: 'up' | 'down' | 'top' | 'bottom') => {
+    const newSteps = [...steps];
+    if (direction === 'top' && index > 0) {
+      const [item] = newSteps.splice(index, 1);
+      newSteps.unshift(item);
+    } else if (direction === 'bottom' && index < newSteps.length - 1) {
+      const [item] = newSteps.splice(index, 1);
+      newSteps.push(item);
+    } else if (direction === 'up' && index > 0) {
+      [newSteps[index - 1], newSteps[index]] = [newSteps[index], newSteps[index - 1]];
+    } else if (direction === 'down' && index < newSteps.length - 1) {
+      [newSteps[index], newSteps[index + 1]] = [newSteps[index + 1], newSteps[index]];
+    }
+    setSteps(newSteps.map((s, idx) => ({ ...s, order: idx + 1 })));
+  };
+
   const getTypeLabel = (type: string) => {
     return ORDER_TYPES.find(t => t.value === type)?.label || type;
   };
 
   const getOrganizationLabel = (org: string) => {
-    return ORGANIZATIONS.find(o => o.value === org)?.label || org;
+    return organizations.find(o => o.id === parseInt(org))?.name || org;
   };
 
   const getRoleLabel = (role: string) => {
-    return ROLES.find(r => r.value === role)?.label || role;
+    return roles.find(r => r.code === role)?.name || role;
   };
 
   const filteredFlows = flows.filter(flow => 
@@ -406,9 +467,9 @@ export default function ApprovalFlowsPage() {
                     <SelectValue placeholder="请选择组织" />
                   </SelectTrigger>
                   <SelectContent>
-                    {ORGANIZATIONS.map((org) => (
-                      <SelectItem key={org.value} value={org.value}>
-                        {org.label}
+                    {organizations.map((org) => (
+                      <SelectItem key={org.id} value={String(org.id)}>
+                        {org.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -422,6 +483,77 @@ export default function ApprovalFlowsPage() {
                 onCheckedChange={(checked) => setForm({ ...form, is_active: checked})}
               />
               <Label htmlFor="is_active">启用</Label>
+            </div>
+
+            {/* 审核节点编辑器 */}
+            <div className="space-y-3 pt-2 border-t">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm font-medium">审核节点配置</Label>
+                <Button size="sm" variant="outline" onClick={addStep}>
+                  <Plus className="mr-1 h-3.5 w-3.5" />
+                  添加节点
+                </Button>
+              </div>
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                {steps.map((step, index) => (
+                  <div key={step.id} className="rounded-lg border bg-muted/20 p-3 space-y-2.5">
+                    <div className="flex items-center gap-2">
+                      <GripVertical className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <Badge variant="secondary" className="text-xs shrink-0">第{index + 1}步</Badge>
+                      <Input
+                        value={step.name}
+                        onChange={(e) => updateStep(step.id, 'name', e.target.value)}
+                        placeholder="节点名称"
+                        className="h-8 text-sm"
+                      />
+                      <div className="flex gap-0.5 shrink-0">
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveStep(index, 'top')} disabled={index === 0}>
+                          <ChevronsUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveStep(index, 'up')} disabled={index === 0}>
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveStep(index, 'down')} disabled={index === steps.length - 1}>
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => moveStep(index, 'bottom')} disabled={index === steps.length - 1}>
+                          <ChevronsDown className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-red-500 hover:text-red-600 shrink-0" onClick={() => removeStep(step.id)}>
+                        <X className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">审核角色 *</Label>
+                        <Select
+                          value={step.required_role}
+                          onValueChange={(value) => updateStep(step.id, 'required_role', value)}
+                        >
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue placeholder="选择角色" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {roles.map(r => (
+                              <SelectItem key={r.id} value={r.code}>{r.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">节点说明</Label>
+                        <Input
+                          value={step.description}
+                          onChange={(e) => updateStep(step.id, 'description', e.target.value)}
+                          placeholder="可选说明"
+                          className="h-8 text-sm"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
           <DialogFooter>

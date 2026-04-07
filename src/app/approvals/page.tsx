@@ -62,14 +62,14 @@ export default function ApprovalsPage() {
   const fetchApprovals = useCallback(async () => {
     setLoading(true);
     try {
-      const response = await fetch('/api/approvals');
+      // 根据tab状态传递不同的status参数
+      const statusParam = activeTab === 'pending' ? 'pending' : '';
+      const url = statusParam ? `/api/approvals?status=${statusParam}` : '/api/approvals';
+      const response = await fetch(url);
       const data = await response.json();
       
-      if (activeTab === 'pending') {
-        setApprovals(data.filter((item: ApprovalItem) => item.status === 'pending'));
-      } else {
-        setApprovals(data.filter((item: ApprovalItem) => item.status !== 'pending'));
-      }
+      // API已经按状态过滤，直接使用返回的数据
+      setApprovals(data);
     } catch (error) {
       console.error('获取审核列表失败:', error);
       // 如果 API 失败，使用 localStorage 作为降级方案
