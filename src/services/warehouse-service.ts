@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getSupabaseClient, getSupabaseCredentials } from '@/storage/database/supabase-client';
 
 export interface Warehouse {
   id: number;
@@ -48,8 +48,8 @@ const mockWarehouses: Warehouse[] = [
 
 async function isSupabaseAvailable(): Promise<boolean> {
   try {
-    getSupabaseClient();
-    return true;
+    const { url } = getSupabaseCredentials();
+    return url !== 'https://mock.supabase.co';
   } catch {
     return false;
   }

@@ -30,6 +30,10 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { fetchStockCounts, createStockCount, completeStockCount, generateOrderNo } from '@/services/stockcount-service';
+import { fetchWarehouses } from '@/services/warehouse-service';
+import { fetchProducts } from '@/services/product-service';
+import { getWarehouseInventory } from '@/services/inventory-service';
 
 interface Warehouse {
   id: number;
@@ -67,50 +71,6 @@ interface StockCountOrder {
   items?: StockCountItem[];
 }
 
-// Mock数据
-const mockWarehouses: Warehouse[] = [
-  { id: 1, code: 'WH001', name: '主仓库' },
-  { id: 2, code: 'WH002', name: '分仓库' },
-];
-
-const mockProducts: Product[] = [
-  { id: 1, code: 'PRD001', name: '对讲机', unit: '台' },
-  { id: 2, code: 'PRD002', name: '警棍', unit: '根' },
-  { id: 3, code: 'PRD003', name: '防刺服', unit: '件' },
-];
-
-const mockStockCountOrders: StockCountOrder[] = [
-  {
-    id: 1,
-    order_no: 'SC202401001',
-    warehouse_id: 1,
-    warehouse_name: '主仓库',
-    status: 'completed',
-    count_date: '2024-01-15',
-    remark: '月度盘点',
-    created_by: '张三',
-    created_at: '2024-01-15T08:00:00Z',
-    items: [
-      { product_id: 1, product_code: 'PRD001', product_name: '对讲机', system_quantity: 150, actual_quantity: '150', difference: 0, remark: '' },
-      { product_id: 2, product_code: 'PRD002', product_name: '警棍', system_quantity: 300, actual_quantity: '298', difference: -2, remark: '损耗2根' },
-    ],
-  },
-  {
-    id: 2,
-    order_no: 'SC202401002',
-    warehouse_id: 2,
-    warehouse_name: '分仓库',
-    status: 'pending',
-    count_date: '2024-01-20',
-    remark: '季度盘点',
-    created_by: '李四',
-    created_at: '2024-01-20T09:00:00Z',
-    items: [
-      { product_id: 3, product_code: 'PRD003', product_name: '防刺服', system_quantity: 80, actual_quantity: '', difference: 0, remark: '' },
-    ],
-  },
-];
-
 export default function StockCountPage() {
   const [orders, setOrders] = useState<StockCountOrder[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -125,67 +85,49 @@ export default function StockCountPage() {
   const [items, setItems] = useState<StockCountItem[]>([]);
 
   useEffect(() => {
-    fetchOrders();
-    fetchWarehouses();
-    fetchProducts();
+    fetchOrdersData();
+    fetchWarehousesData();
+    fetchProductsData();
   }, []);
 
-  const fetchOrders = async () => {
+  const fetchOrdersData = async () => {
     try {
-      const savedOrders = localStorage.getItem('stock_count_orders');
-      if (savedOrders) {
-        setOrders(JSON.parse(savedOrders));
-      } else {
-        setOrders(mockStockCountOrders);
-        localStorage.setItem('stock_count_orders', JSON.stringify(mockStockCountOrders));
-      }
+      const data = await fetchStockCounts();
+      setOrders(data as unknown as StockCountOrder[]);
     } catch (error) {
       console.error('获取盘点单列表失败:', error);
-      setOrders(mockStockCountOrders);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchWarehouses = async () => {
+  const fetchWarehousesData = async () => {
     try {
-      const savedWarehouses = localStorage.getItem('warehouses');
-      if (savedWarehouses) {
-        setWarehouses(JSON.parse(savedWarehouses));
-      } else {
-        setWarehouses(mockWarehouses);
-        localStorage.setItem('warehouses', JSON.stringify(mockWarehouses));
-      }
+      const data = await fetchWarehouses();
+      setWarehouses(data.map(w => ({ id: w.id, code: w.code, name: w.name })));
     } catch (error) {
       console.error('获取仓库列表失败:', error);
-      setWarehouses(mockWarehouses);
     }
   };
 
-  const fetchProducts = async () => {
+  const fetchProductsData = async () => {
     try {
-      const savedProducts = localStorage.getItem('products');
-      if (savedProducts) {
-        setProducts(JSON.parse(savedProducts));
-      } else {
-        setProducts(mockProducts);
-        localStorage.setItem('products', JSON.stringify(mockProducts));
-      }
+      const data = await fetchProducts();
+      setProducts(data.map(p => ({ id: p.id, code: p.code, name: p.name, unit: p.unit })));
     } catch (error) {
       console.error('获取商品列表失败:', error);
-      setProducts(mockProducts);
     }
   };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchOrders();
+      fetchOrdersData();
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
   const handleOpenDialog = () => {
-    const newOrderNo = `SC${Date.now()}`;
+    const newOrderNo = generateOrderNo();
     setOrderNo(newOrderNo);
     setSelectedWarehouse('');
     setCountDate(new Date().toISOString().split('T')[0]);
@@ -232,25 +174,26 @@ export default function StockCountPage() {
     }
 
     try {
-      const warehouse = warehouses.find((w) => w.id === parseInt(selectedWarehouse));
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       
-      const newOrder: StockCountOrder = {
-        id: Date.now(),
-        order_no: orderNo,
-        warehouse_id: parseInt(selectedWarehouse),
-        warehouse_name: warehouse?.name || '',
-        status: 'pending',
-        count_date: countDate,
-        remark: remark || '',
-        created_by: '系统用户',
-        created_at: new Date().toISOString(),
-        items: items,
-      };
+      await createStockCount(
+        {
+          order_no: orderNo,
+          warehouse_id: parseInt(selectedWarehouse),
+          status: 'pending',
+          remark: remark || '',
+          created_by: currentUser.name || '系统用户',
+        },
+        items.map(item => ({
+          product_id: item.product_id,
+          book_quantity: item.system_quantity,
+          actual_quantity: item.actual_quantity ? parseInt(item.actual_quantity) : undefined,
+          difference: item.difference,
+          remark: item.remark,
+        }))
+      );
 
-      const updatedOrders = [newOrder, ...orders];
-      setOrders(updatedOrders);
-      localStorage.setItem('stock_count_orders', JSON.stringify(updatedOrders));
-
+      await fetchOrdersData();
       handleCloseDialog();
     } catch (error) {
       console.error('保存盘点单失败:', error);
@@ -260,18 +203,9 @@ export default function StockCountPage() {
 
   const handleComplete = async (order: StockCountOrder) => {
     try {
-      const updatedOrders = orders.map((o) => {
-        if (o.id === order.id) {
-          return {
-            ...o,
-            status: 'completed',
-          };
-        }
-        return o;
-      });
-
-      setOrders(updatedOrders);
-      localStorage.setItem('stock_count_orders', JSON.stringify(updatedOrders));
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      await completeStockCount(order.id, currentUser.name || '系统用户');
+      await fetchOrdersData();
     } catch (error) {
       console.error('完成盘点单失败:', error);
       alert('操作失败，请重试');

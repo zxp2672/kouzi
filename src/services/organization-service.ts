@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getSupabaseClient, getSupabaseCredentials } from '@/storage/database/supabase-client';
 
 export interface Organization {
   id: number;
@@ -70,8 +70,8 @@ const DEFAULT_ORGANIZATIONS: Organization[] = [
 
 async function isSupabaseAvailable(): Promise<boolean> {
   try {
-    getSupabaseClient();
-    return true;
+    const { url } = getSupabaseCredentials();
+    return url !== 'https://mock.supabase.co';
   } catch {
     return false;
   }
@@ -100,7 +100,7 @@ export async function fetchOrganizations(): Promise<Organization[]> {
     const { data, error } = await client
       .from('organizations')
       .select('*')
-      .order('sort_order', { ascending: true });
+      .order('id', { ascending: true });
 
     if (error) {
       console.warn('Supabase fetch failed, falling back to localStorage:', error);

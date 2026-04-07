@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getSupabaseClient, getSupabaseCredentials } from '@/storage/database/supabase-client';
 
 export interface Product {
   id: number;
@@ -84,8 +84,8 @@ const mockProducts: Product[] = [
 
 async function isSupabaseAvailable(): Promise<boolean> {
   try {
-    getSupabaseClient();
-    return true;
+    const { url } = getSupabaseCredentials();
+    return url !== 'https://mock.supabase.co';
   } catch {
     return false;
   }

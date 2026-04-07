@@ -1,4 +1,4 @@
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { getSupabaseClient, getSupabaseCredentials } from '@/storage/database/supabase-client';
 
 export interface Role {
   id: number;
@@ -59,8 +59,8 @@ const DEFAULT_ROLES: Role[] = [
 
 async function isSupabaseAvailable(): Promise<boolean> {
   try {
-    getSupabaseClient();
-    return true;
+    const { url } = getSupabaseCredentials();
+    return url !== 'https://mock.supabase.co';
   } catch {
     return false;
   }
@@ -88,7 +88,7 @@ export async function fetchRoles(): Promise<Role[]> {
     const { data, error } = await client
       .from('roles')
       .select('*')
-      .order('level', { ascending: true });
+      .order('id', { ascending: true });
 
     if (error) {
       console.warn('Supabase fetch failed, falling back to localStorage:', error);

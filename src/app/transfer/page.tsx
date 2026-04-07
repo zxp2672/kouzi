@@ -30,6 +30,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { fetchTransferOrders, createTransferOrder, approveTransferOrder, generateOrderNo } from '@/services/transfer-service';
+import { fetchWarehouses } from '@/services/warehouse-service';
+import { fetchProducts } from '@/services/product-service';
 
 interface Warehouse {
   id: number;
@@ -68,54 +71,6 @@ interface TransferOrder {
   approved_by?: string;
 }
 
-// Mock数据
-const mockWarehouses: Warehouse[] = [
-  { id: 1, code: 'WH001', name: '主仓库' },
-  { id: 2, code: 'WH002', name: '分仓库' },
-];
-
-const mockProducts: Product[] = [
-  { id: 1, code: 'PRD001', name: '对讲机', unit: '台' },
-  { id: 2, code: 'PRD002', name: '警棍', unit: '根' },
-  { id: 3, code: 'PRD003', name: '防刺服', unit: '件' },
-];
-
-const mockTransferOrders: TransferOrder[] = [
-  {
-    id: 1,
-    order_no: 'TR202401001',
-    from_warehouse_id: 1,
-    from_warehouse_name: '主仓库',
-    to_warehouse_id: 2,
-    to_warehouse_name: '分仓库',
-    status: 'approved',
-    remark: '调拨物资',
-    created_by: '张三',
-    created_at: '2024-01-14T09:00:00Z',
-    approved_at: '2024-01-14T10:30:00Z',
-    approved_by: '李四',
-    items: [
-      { product_id: 1, product_code: 'PRD001', product_name: '对讲机', quantity: 10, remark: '' },
-      { product_id: 2, product_code: 'PRD002', product_name: '警棍', quantity: 20, remark: '' },
-    ],
-  },
-  {
-    id: 2,
-    order_no: 'TR202401002',
-    from_warehouse_id: 2,
-    from_warehouse_name: '分仓库',
-    to_warehouse_id: 1,
-    to_warehouse_name: '主仓库',
-    status: 'pending',
-    remark: '退回物资',
-    created_by: '王五',
-    created_at: '2024-01-16T14:20:00Z',
-    items: [
-      { product_id: 3, product_code: 'PRD003', product_name: '防刺服', quantity: 5, remark: '' },
-    ],
-  },
-];
-
 export default function TransferPage() {
   const [orders, setOrders] = useState<TransferOrder[]>([]);
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
@@ -133,67 +88,49 @@ export default function TransferPage() {
   const [itemRemark, setItemRemark] = useState('');
 
   useEffect(() => {
-    fetchOrders();
-    fetchWarehouses();
-    fetchProducts();
+    fetchOrdersData();
+    fetchWarehousesData();
+    fetchProductsData();
   }, []);
 
-  const fetchOrders = async () => {
+  const fetchOrdersData = async () => {
     try {
-      const savedOrders = localStorage.getItem('transfer_orders');
-      if (savedOrders) {
-        setOrders(JSON.parse(savedOrders));
-      } else {
-        setOrders(mockTransferOrders);
-        localStorage.setItem('transfer_orders', JSON.stringify(mockTransferOrders));
-      }
+      const data = await fetchTransferOrders();
+      setOrders(data as unknown as TransferOrder[]);
     } catch (error) {
       console.error('获取调拨单列表失败:', error);
-      setOrders(mockTransferOrders);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchWarehouses = async () => {
+  const fetchWarehousesData = async () => {
     try {
-      const savedWarehouses = localStorage.getItem('warehouses');
-      if (savedWarehouses) {
-        setWarehouses(JSON.parse(savedWarehouses));
-      } else {
-        setWarehouses(mockWarehouses);
-        localStorage.setItem('warehouses', JSON.stringify(mockWarehouses));
-      }
+      const data = await fetchWarehouses();
+      setWarehouses(data.map(w => ({ id: w.id, code: w.code, name: w.name })));
     } catch (error) {
       console.error('获取仓库列表失败:', error);
-      setWarehouses(mockWarehouses);
     }
   };
 
-  const fetchProducts = async () => {
+  const fetchProductsData = async () => {
     try {
-      const savedProducts = localStorage.getItem('products');
-      if (savedProducts) {
-        setProducts(JSON.parse(savedProducts));
-      } else {
-        setProducts(mockProducts);
-        localStorage.setItem('products', JSON.stringify(mockProducts));
-      }
+      const data = await fetchProducts();
+      setProducts(data.map(p => ({ id: p.id, code: p.code, name: p.name, unit: p.unit })));
     } catch (error) {
       console.error('获取商品列表失败:', error);
-      setProducts(mockProducts);
     }
   };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchOrders();
+      fetchOrdersData();
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
   const handleOpenDialog = () => {
-    const newOrderNo = `TR${Date.now()}`;
+    const newOrderNo = generateOrderNo();
     setOrderNo(newOrderNo);
     setFromWarehouse('');
     setToWarehouse('');
@@ -246,27 +183,25 @@ export default function TransferPage() {
     }
 
     try {
-      const fromWh = warehouses.find((w) => w.id === parseInt(fromWarehouse));
-      const toWh = warehouses.find((w) => w.id === parseInt(toWarehouse));
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       
-      const newOrder: TransferOrder = {
-        id: Date.now(),
-        order_no: orderNo,
-        from_warehouse_id: parseInt(fromWarehouse),
-        from_warehouse_name: fromWh?.name || '',
-        to_warehouse_id: parseInt(toWarehouse),
-        to_warehouse_name: toWh?.name || '',
-        status: 'pending',
-        remark: remark || '',
-        created_by: '系统用户',
-        created_at: new Date().toISOString(),
-        items: items,
-      };
+      await createTransferOrder(
+        {
+          order_no: orderNo,
+          from_warehouse_id: parseInt(fromWarehouse),
+          to_warehouse_id: parseInt(toWarehouse),
+          status: 'pending',
+          remark: remark || '',
+          created_by: currentUser.name || '系统用户',
+        },
+        items.map(item => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          remark: item.remark,
+        }))
+      );
 
-      const updatedOrders = [newOrder, ...orders];
-      setOrders(updatedOrders);
-      localStorage.setItem('transfer_orders', JSON.stringify(updatedOrders));
-
+      await fetchOrdersData();
       handleCloseDialog();
     } catch (error) {
       console.error('保存调拨单失败:', error);
@@ -276,20 +211,9 @@ export default function TransferPage() {
 
   const handleApprove = async (order: TransferOrder) => {
     try {
-      const updatedOrders = orders.map((o) => {
-        if (o.id === order.id) {
-          return {
-            ...o,
-            status: 'approved',
-            approved_at: new Date().toISOString(),
-            approved_by: '系统用户',
-          };
-        }
-        return o;
-      });
-
-      setOrders(updatedOrders);
-      localStorage.setItem('transfer_orders', JSON.stringify(updatedOrders));
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      await approveTransferOrder(order.id, currentUser.name || '系统用户', 'approved');
+      await fetchOrdersData();
     } catch (error) {
       console.error('审核调拨单失败:', error);
       alert('审核失败，请重试');
@@ -298,19 +222,9 @@ export default function TransferPage() {
 
   const handleReject = async (order: TransferOrder) => {
     try {
-      const updatedOrders = orders.map((o) => {
-        if (o.id === order.id) {
-          return {
-            ...o,
-            status: 'rejected',
-            approved_by: '系统用户',
-          };
-        }
-        return o;
-      });
-
-      setOrders(updatedOrders);
-      localStorage.setItem('transfer_orders', JSON.stringify(updatedOrders));
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      await approveTransferOrder(order.id, currentUser.name || '系统用户', 'rejected');
+      await fetchOrdersData();
     } catch (error) {
       console.error('拒绝调拨单失败:', error);
       alert('操作失败，请重试');

@@ -33,21 +33,10 @@ import { Textarea } from '@/components/ui/textarea';
 
 import { PrintPdfExport, DocumentPrintLayout } from '@/components/print-pdf-export';
 import { useApprovalTodo } from '@/hooks/use-approval-todo';
-import { createInboundOrder, approveInboundOrder as approveInboundOrderDB, generateOrderNo } from '@/services/inbound-service';
+import { fetchInboundOrders, createInboundOrder, updateInboundOrder, generateOrderNo } from '@/services/inbound-service';
 import { increaseInventory } from '@/services/inventory-service';
-
-interface Warehouse {
-  id: number;
-  code: string;
-  name: string;
-}
-
-interface Product {
-  id: number;
-  code: string;
-  name: string;
-  unit: string;
-}
+import { fetchWarehouses } from '@/services/warehouse-service';
+import { fetchProducts } from '@/services/product-service';
 
 interface InboundItem {
   product_id: number;
@@ -74,53 +63,18 @@ interface InboundOrder {
   approved_by?: string;
 }
 
-// Mock数据
-const mockWarehouses: Warehouse[] = [
-  { id: 1, code: 'WH001', name: '主仓库' },
-  { id: 2, code: 'WH002', name: '分仓库' },
-];
+interface Warehouse {
+  id: number;
+  code: string;
+  name: string;
+}
 
-const mockProducts: Product[] = [
-  { id: 1, code: 'PRD001', name: '对讲机', unit: '台' },
-  { id: 2, code: 'PRD002', name: '警棍', unit: '根' },
-  { id: 3, code: 'PRD003', name: '防刺服', unit: '件' },
-];
-
-const mockInboundOrders: InboundOrder[] = [
-  {
-    id: 1,
-    order_no: 'IN202401001',
-    warehouse_id: 1,
-    warehouse_name: '主仓库',
-    supplier: '安防设备有限公司',
-    type: 'purchase',
-    status: 'approved',
-    remark: '常规采购',
-    created_by: '张三',
-    created_at: '2024-01-15T10:30:00Z',
-    approved_at: '2024-01-15T14:00:00Z',
-    approved_by: '李四',
-    items: [
-      { product_id: 1, product_code: 'PRD001', product_name: '对讲机', quantity: 50, price: '300', batch_no: 'B2024011501' },
-      { product_id: 2, product_code: 'PRD002', product_name: '警棍', quantity: 100, price: '50', batch_no: 'B2024011502' },
-    ],
-  },
-  {
-    id: 2,
-    order_no: 'IN202401002',
-    warehouse_id: 2,
-    warehouse_name: '分仓库',
-    supplier: '劳保用品厂',
-    type: 'purchase',
-    status: 'pending',
-    remark: '补充库存',
-    created_by: '王五',
-    created_at: '2024-01-16T09:15:00Z',
-    items: [
-      { product_id: 3, product_code: 'PRD003', product_name: '防刺服', quantity: 30, price: '200', batch_no: 'B2024011601' },
-    ],
-  },
-];
+interface Product {
+  id: number;
+  code: string;
+  name: string;
+  unit: string;
+}
 
 export default function InboundPage() {
   const [orders, setOrders] = useState<InboundOrder[]>([]);
@@ -146,62 +100,44 @@ export default function InboundPage() {
   const { refresh: refreshApprovalTodo } = useApprovalTodo();
 
   useEffect(() => {
-    fetchOrders();
-    fetchWarehouses();
-    fetchProducts();
+    fetchOrdersData();
+    fetchWarehousesData();
+    fetchProductsData();
   }, []);
 
-  const fetchOrders = async () => {
+  const fetchOrdersData = async () => {
     try {
-      // 优先从数据库获取，降级到 localStorage
-      const savedOrders = localStorage.getItem('inbound_orders');
-      if (savedOrders) {
-        setOrders(JSON.parse(savedOrders));
-      } else {
-        setOrders(mockInboundOrders);
-        localStorage.setItem('inbound_orders', JSON.stringify(mockInboundOrders));
-      }
+      const data = await fetchInboundOrders();
+      // 服务层返回的数据可能没有 items 和 warehouse_name，需要适配
+      setOrders(data as unknown as InboundOrder[]);
     } catch (error) {
       console.error('获取入库单列表失败:', error);
-      setOrders(mockInboundOrders);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchWarehouses = async () => {
+  const fetchWarehousesData = async () => {
     try {
-      const savedWarehouses = localStorage.getItem('warehouses');
-      if (savedWarehouses) {
-        setWarehouses(JSON.parse(savedWarehouses));
-      } else {
-        setWarehouses(mockWarehouses);
-        localStorage.setItem('warehouses', JSON.stringify(mockWarehouses));
-      }
+      const data = await fetchWarehouses();
+      setWarehouses(data.map(w => ({ id: w.id, code: w.code, name: w.name })));
     } catch (error) {
       console.error('获取仓库列表失败:', error);
-      setWarehouses(mockWarehouses);
     }
   };
 
-  const fetchProducts = async () => {
+  const fetchProductsData = async () => {
     try {
-      const savedProducts = localStorage.getItem('products');
-      if (savedProducts) {
-        setProducts(JSON.parse(savedProducts));
-      } else {
-        setProducts(mockProducts);
-        localStorage.setItem('products', JSON.stringify(mockProducts));
-      }
+      const data = await fetchProducts();
+      setProducts(data.map(p => ({ id: p.id, code: p.code, name: p.name, unit: p.unit })));
     } catch (error) {
       console.error('获取商品列表失败:', error);
-      setProducts(mockProducts);
     }
   };
 
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchOrders();
+      fetchOrdersData();
     }, 300);
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -259,31 +195,27 @@ export default function InboundPage() {
 
     try {
       const warehouse = warehouses.find((w) => w.id === parseInt(selectedWarehouse));
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       
-      const newOrder: InboundOrder = {
-        id: Date.now(),
-        order_no: orderNo,
-        warehouse_id: parseInt(selectedWarehouse),
-        warehouse_name: warehouse?.name || '',
-        supplier: supplier || '',
-        type: inboundType,
-        status: 'pending',
-        remark: remark || '',
-        created_by: '系统用户',
-        created_at: new Date().toISOString(),
-        items: items,
-      };
+      await createInboundOrder(
+        {
+          order_no: orderNo,
+          warehouse_id: parseInt(selectedWarehouse),
+          supplier: supplier || '',
+          status: 'pending',
+          remark: remark || '',
+          created_by: currentUser.name || '系统用户',
+        },
+        items.map(item => ({
+          product_id: item.product_id,
+          quantity: item.quantity,
+          price: item.price,
+          batch_no: item.batch_no,
+        }))
+      );
 
-      const updatedOrders = [newOrder, ...orders];
-      setOrders(updatedOrders);
-      localStorage.setItem('inbound_orders', JSON.stringify(updatedOrders));
-
-      // TODO: 后续切换到数据库
-      // await createInboundOrder(
-      //   { order_no: orderNo, warehouse_id: parseInt(selectedWarehouse), ... },
-      //   items.map(item => ({ product_id: item.product_id, quantity: item.quantity, ... }))
-      // );
-
+      // 重新加载列表
+      await fetchOrdersData();
       handleCloseDialog();
     } catch (error) {
       console.error('保存入库单失败:', error);
@@ -293,20 +225,13 @@ export default function InboundPage() {
 
   const handleApprove = async (order: InboundOrder) => {
     try {
-      const updatedOrders = orders.map((o) => {
-        if (o.id === order.id) {
-          return {
-            ...o,
-            status: 'approved',
-            approved_at: new Date().toISOString(),
-            approved_by: '系统用户',
-          };
-        }
-        return o;
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      
+      await updateInboundOrder(order.id, {
+        status: 'approved',
+        approved_at: new Date().toISOString(),
+        approved_by: currentUser.name || '系统用户',
       });
-
-      setOrders(updatedOrders);
-      localStorage.setItem('inbound_orders', JSON.stringify(updatedOrders));
       
       // 审核通过后，自动增加库存
       if (order.items && order.items.length > 0) {
@@ -318,6 +243,7 @@ export default function InboundPage() {
       
       // 刷新审核待办提醒
       refreshApprovalTodo();
+      await fetchOrdersData();
       
       alert('审核成功，库存已更新');
     } catch (error) {
@@ -328,22 +254,16 @@ export default function InboundPage() {
 
   const handleReject = async (order: InboundOrder) => {
     try {
-      const updatedOrders = orders.map((o) => {
-        if (o.id === order.id) {
-          return {
-            ...o,
-            status: 'rejected',
-            approved_by: '系统用户',
-          };
-        }
-        return o;
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      
+      await updateInboundOrder(order.id, {
+        status: 'rejected',
+        approved_by: currentUser.name || '系统用户',
       });
-
-      setOrders(updatedOrders);
-      localStorage.setItem('inbound_orders', JSON.stringify(updatedOrders));
       
       // 刷新审核待办提醒
       refreshApprovalTodo();
+      await fetchOrdersData();
     } catch (error) {
       console.error('拒绝入库单失败:', error);
       alert('操作失败，请重试');
