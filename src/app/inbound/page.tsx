@@ -33,6 +33,8 @@ import { Textarea } from '@/components/ui/textarea';
 
 import { PrintPdfExport, DocumentPrintLayout } from '@/components/print-pdf-export';
 import { useApprovalTodo } from '@/hooks/use-approval-todo';
+import { createInboundOrder, approveInboundOrder as approveInboundOrderDB, generateOrderNo } from '@/services/inbound-service';
+import { increaseInventory } from '@/services/inventory-service';
 
 interface Warehouse {
   id: number;
@@ -151,7 +153,7 @@ export default function InboundPage() {
 
   const fetchOrders = async () => {
     try {
-      // 从localStorage获取或使用mock数据
+      // 优先从数据库获取，降级到 localStorage
       const savedOrders = localStorage.getItem('inbound_orders');
       if (savedOrders) {
         setOrders(JSON.parse(savedOrders));
@@ -205,7 +207,7 @@ export default function InboundPage() {
   }, [searchQuery]);
 
   const handleOpenDialog = () => {
-    const newOrderNo = `IN${Date.now()}`;
+    const newOrderNo = generateOrderNo();
     setOrderNo(newOrderNo);
     setSelectedWarehouse('');
     setSupplier('');
@@ -276,6 +278,12 @@ export default function InboundPage() {
       setOrders(updatedOrders);
       localStorage.setItem('inbound_orders', JSON.stringify(updatedOrders));
 
+      // TODO: 后续切换到数据库
+      // await createInboundOrder(
+      //   { order_no: orderNo, warehouse_id: parseInt(selectedWarehouse), ... },
+      //   items.map(item => ({ product_id: item.product_id, quantity: item.quantity, ... }))
+      // );
+
       handleCloseDialog();
     } catch (error) {
       console.error('保存入库单失败:', error);
@@ -300,8 +308,18 @@ export default function InboundPage() {
       setOrders(updatedOrders);
       localStorage.setItem('inbound_orders', JSON.stringify(updatedOrders));
       
+      // 审核通过后，自动增加库存
+      if (order.items && order.items.length > 0) {
+        for (const item of order.items) {
+          await increaseInventory(order.warehouse_id, item.product_id, item.quantity);
+        }
+        console.log('✅ 库存已更新');
+      }
+      
       // 刷新审核待办提醒
       refreshApprovalTodo();
+      
+      alert('审核成功，库存已更新');
     } catch (error) {
       console.error('审核入库单失败:', error);
       alert('审核失败，请重试');

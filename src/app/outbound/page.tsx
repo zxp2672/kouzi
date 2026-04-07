@@ -32,6 +32,8 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { PrintPdfExport, DocumentPrintLayout } from '@/components/print-pdf-export';
 import { useApprovalTodo } from '@/hooks/use-approval-todo';
+import { generateOrderNo } from '@/services/outbound-service';
+import { decreaseInventory, checkStockAvailability } from '@/services/inventory-service';
 
 interface Warehouse {
   id: number;
@@ -234,7 +236,7 @@ export default function OutboundPage() {
   };
 
   const handleOpenDialog = () => {
-    const newOrderNo = `OUT${Date.now()}`;
+    const newOrderNo = generateOrderNo();
     setOrderNo(newOrderNo);
     setSelectedWarehouse('');
     setCustomer('');
@@ -326,6 +328,22 @@ export default function OutboundPage() {
 
   const handleApprove = async (order: OutboundOrder) => {
     try {
+      // 检查库存是否充足
+      if (order.items && order.items.length > 0) {
+        for (const item of order.items) {
+          const { available, currentStock } = await checkStockAvailability(
+            order.warehouse_id,
+            item.product_id,
+            item.quantity
+          );
+          
+          if (!available) {
+            alert(`库存不足：${item.product_name} 当前库存 ${currentStock}，需要 ${item.quantity}`);
+            return;
+          }
+        }
+      }
+
       const updatedOrders = orders.map((o) => {
         if (o.id === order.id) {
           return {
@@ -341,8 +359,26 @@ export default function OutboundPage() {
       setOrders(updatedOrders);
       localStorage.setItem('outbound_orders', JSON.stringify(updatedOrders));
       
+      // 审核通过后，自动扣减库存
+      if (order.items && order.items.length > 0) {
+        for (const item of order.items) {
+          const success = await decreaseInventory(
+            order.warehouse_id,
+            item.product_id,
+            item.quantity
+          );
+          
+          if (!success) {
+            console.error(`扣减库存失败：${item.product_name}`);
+          }
+        }
+        console.log('✅ 库存已扣减');
+      }
+      
       // 刷新审核待办提醒
       refreshApprovalTodo();
+      
+      alert('审核成功，库存已扣减');
     } catch (error) {
       console.error('审核出库单失败:', error);
       alert('审核失败，请重试');

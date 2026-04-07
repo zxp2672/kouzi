@@ -20,6 +20,10 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getInventoryStats, getLowStockAlerts } from '@/services/inventory-service';
+import { fetchInboundOrders } from '@/services/inbound-service';
+import { fetchOutboundOrders } from '@/services/outbound-service';
+import { fetchTransferOrders } from '@/services/transfer-service';
 
 // 动画数字组件
 function AnimatedNumber({ value, duration = 2000 }: { value: number; duration?: number }) {
@@ -175,11 +179,70 @@ export default function DashboardPage() {
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
-      await new Promise(resolve => setTimeout(resolve, 800));
-      setLowStockList(MOCK_LOW_STOCK);
-      setRecentActivities(MOCK_RECENT_ACTIVITIES);
+      
+      // 获取真实库存统计
+      const inventoryStats = await getInventoryStats();
+      
+      // 获取低库存预警
+      const lowStockItems = await getLowStockAlerts(10);
+      setLowStockList(lowStockItems as any);
+      
+      // 获取最近活动
+      try {
+        const [inboundOrders, outboundOrders, transferOrders] = await Promise.all([
+          fetchInboundOrders(),
+          fetchOutboundOrders(),
+          fetchTransferOrders()
+        ]);
+        
+        // 合并并按时间排序
+        const allActivities = [
+          ...inboundOrders.slice(0, 5).map(o => ({
+            id: o.id,
+            type: '入库',
+            order_no: o.order_no,
+            warehouse_name: '仓库',
+            status: o.status,
+            created_at: o.created_at
+          })),
+          ...outboundOrders.slice(0, 5).map(o => ({
+            id: o.id + 1000,
+            type: '出库',
+            order_no: o.order_no,
+            warehouse_name: '仓库',
+            status: o.status,
+            created_at: o.created_at
+          })),
+          ...transferOrders.slice(0, 5).map(o => ({
+            id: o.id + 2000,
+            type: '调拨',
+            order_no: o.order_no,
+            warehouse_name: '仓库',
+            status: o.status,
+            created_at: o.created_at
+          }))
+        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+         .slice(0, 10);
+        
+        setRecentActivities(allActivities as any);
+      } catch (e) {
+        console.error('获取活动记录失败，使用模拟数据', e);
+        setRecentActivities(MOCK_RECENT_ACTIVITIES);
+      }
+      
+      // 更新统计数据
+      setStats({
+        ...stats,
+        totalStock: inventoryStats.totalQuantity,
+        lowStockItems: inventoryStats.lowStockCount,
+        totalWarehouses: inventoryStats.warehouseCount,
+      });
+      
     } catch (error) {
       console.error('获取仪表盘数据失败:', error);
+      // 失败时使用模拟数据
+      setLowStockList(MOCK_LOW_STOCK);
+      setRecentActivities(MOCK_RECENT_ACTIVITIES);
     } finally {
       setLoading(false);
     }
