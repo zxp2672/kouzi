@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { Building2, Users, Shield, FileSpreadsheet, Workflow, Landmark, Settings } from 'lucide-react';
+import { Building2, Users, Shield, FileSpreadsheet, Workflow, Landmark, Settings, Tags } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import WarehouseManagement from './warehouses/page';
 import UserManagement from './users/page';
@@ -9,6 +9,7 @@ import RoleManagement from './roles/page';
 import ApprovalFlowManagement from './approval-flows/page';
 import OrganizationManagement from './organizations/page';
 import SystemConfig from './system-config/page';
+import CategoriesManagement from './categories/page';
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState('system-config');
@@ -21,7 +22,7 @@ export default function SettingsPage() {
       </div>
 
       <Tabs defaultValue="system-config" value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="system-config" className="flex items-center gap-2">
             <Settings className="h-4 w-4" />
             系统配置
@@ -33,6 +34,10 @@ export default function SettingsPage() {
           <TabsTrigger value="warehouses" className="flex items-center gap-2">
             <Building2 className="h-4 w-4" />
             仓库管理
+          </TabsTrigger>
+          <TabsTrigger value="categories" className="flex items-center gap-2">
+            <Tags className="h-4 w-4" />
+            类别单位
           </TabsTrigger>
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
@@ -58,6 +63,10 @@ export default function SettingsPage() {
 
         <TabsContent value="warehouses" className="mt-6">
           <WarehouseManagement />
+        </TabsContent>
+
+        <TabsContent value="categories" className="mt-6">
+          <CategoriesManagement />
         </TabsContent>
 
         <TabsContent value="users" className="mt-6">

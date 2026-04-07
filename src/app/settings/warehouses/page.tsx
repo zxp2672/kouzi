@@ -36,6 +36,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { Warehouse as WarehouseType, WarehouseFormData, fetchWarehouses, createWarehouse, updateWarehouse, deleteWarehouse } from '@/services/warehouse-service';
+import { fetchOrganizations, Organization } from '@/services/organization-service';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface WarehouseForm {
   code: string;
@@ -43,6 +51,7 @@ interface WarehouseForm {
   address: string;
   manager: string;
   phone: string;
+  organization_id: string;
   is_active: boolean;
 }
 
@@ -52,6 +61,7 @@ const initialForm: WarehouseForm = {
   address: '',
   manager: '',
   phone: '',
+  organization_id: '',
   is_active: true,
 };
 
@@ -63,12 +73,17 @@ export default function WarehousesPage() {
   const [editingWarehouse, setEditingWarehouse] = useState<WarehouseType | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [form, setForm] = useState<WarehouseForm>(initialForm);
+  const [organizations, setOrganizations] = useState<Organization[]>([]);
 
   const loadWarehouses = async () => {
     try {
       setLoading(true);
-      const data = await fetchWarehouses();
+      const [data, orgs] = await Promise.all([
+        fetchWarehouses(),
+        fetchOrganizations().catch(() => []),
+      ]);
       setWarehouses(data);
+      setOrganizations(orgs);
     } catch (error) {
       console.error('获取仓库列表失败:', error);
     } finally {
@@ -96,6 +111,7 @@ export default function WarehousesPage() {
         address: warehouse.address || '',
         manager: warehouse.manager || '',
         phone: warehouse.phone || '',
+        organization_id: warehouse.organization_id ? String(warehouse.organization_id) : '',
         is_active: warehouse.is_active,
       });
     } else {
@@ -124,6 +140,7 @@ export default function WarehousesPage() {
         address: form.address || undefined,
         manager: form.manager || undefined,
         phone: form.phone || undefined,
+        organization_id: form.organization_id ? parseInt(form.organization_id) : null,
         is_active: form.is_active,
       };
 
@@ -196,6 +213,7 @@ export default function WarehousesPage() {
                 <TableRow>
                   <TableHead>仓库编码</TableHead>
                   <TableHead>仓库名称</TableHead>
+                  <TableHead>所属单位</TableHead>
                   <TableHead>地址</TableHead>
                   <TableHead>负责人</TableHead>
                   <TableHead>电话</TableHead>
@@ -206,13 +224,13 @@ export default function WarehousesPage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       加载中...
                     </TableCell>
                   </TableRow>
                 ) : filteredWarehouses.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-8">
+                    <TableCell colSpan={8} className="text-center py-8">
                       暂无仓库数据
                     </TableCell>
                   </TableRow>
@@ -223,6 +241,16 @@ export default function WarehousesPage() {
                         <code className="text-sm text-muted-foreground">{wh.code}</code>
                       </TableCell>
                       <TableCell className="font-medium">{wh.name}</TableCell>
+                      <TableCell>
+                        {(() => {
+                          const org = organizations.find(o => o.id === wh.organization_id);
+                          return org ? (
+                            <Badge variant="outline">{org.name}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">-</span>
+                          );
+                        })()}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
                           <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -304,6 +332,25 @@ export default function WarehousesPage() {
                   placeholder="例如：中心仓库"
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="organization_id">所属单位</Label>
+              <Select
+                value={form.organization_id}
+                onValueChange={(value) => setForm({ ...form, organization_id: value === 'none' ? '' : value })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="选择所属单位" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">无</SelectItem>
+                  {organizations.map(org => (
+                    <SelectItem key={org.id} value={String(org.id)}>
+                      {org.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="address">地址</Label>

@@ -151,6 +151,36 @@ export const outboundOrders = pgTable("outbound_orders", {
 	pgPolicy("outbound_orders_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
 ]);
 
+export const productCategories = pgTable("product_categories", {
+	id: serial().primaryKey().notNull(),
+	name: varchar({ length: 100 }).notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	unique("product_categories_name_unique").on(table.name),
+	pgPolicy("product_categories_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("product_categories_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("product_categories_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("product_categories_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
+
+export const productUnits = pgTable("product_units", {
+	id: serial().primaryKey().notNull(),
+	name: varchar({ length: 50 }).notNull(),
+	sortOrder: integer("sort_order").default(0).notNull(),
+	isActive: boolean("is_active").default(true).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),
+}, (table) => [
+	unique("product_units_name_unique").on(table.name),
+	pgPolicy("product_units_允许公开删除", { as: "permissive", for: "delete", to: ["public"], using: sql`true` }),
+	pgPolicy("product_units_允许公开更新", { as: "permissive", for: "update", to: ["public"] }),
+	pgPolicy("product_units_允许公开写入", { as: "permissive", for: "insert", to: ["public"] }),
+	pgPolicy("product_units_允许公开读取", { as: "permissive", for: "select", to: ["public"] }),
+]);
+
 export const products = pgTable("products", {
 	id: serial().primaryKey().notNull(),
 	code: varchar({ length: 50 }).notNull(),
@@ -303,6 +333,7 @@ export const warehouses = pgTable("warehouses", {
 	address: text(),
 	manager: varchar({ length: 100 }),
 	phone: varchar({ length: 20 }),
+	organizationId: integer("organization_id"),
 	isActive: boolean("is_active").default(true).notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }),

@@ -7,6 +7,7 @@ export interface Warehouse {
   address: string | null;
   manager: string | null;
   phone: string | null;
+  organization_id: number | null;
   is_active: boolean;
   created_at: string;
   updated_at: string | null;
@@ -18,6 +19,7 @@ export interface WarehouseFormData {
   address?: string;
   manager?: string;
   phone?: string;
+  organization_id?: number | null;
   is_active: boolean;
 }
 
@@ -29,6 +31,7 @@ const mockWarehouses: Warehouse[] = [
     address: '北京市朝阳区建国路88号',
     manager: '张三',
     phone: '13800138001',
+    organization_id: null,
     is_active: true,
     created_at: new Date().toISOString(),
     updated_at: null
@@ -40,6 +43,7 @@ const mockWarehouses: Warehouse[] = [
     address: '北京市海淀区中关村大街1号',
     manager: '李四',
     phone: '13800138002',
+    organization_id: null,
     is_active: true,
     created_at: new Date().toISOString(),
     updated_at: null
@@ -123,6 +127,7 @@ export async function createWarehouse(warehouse: WarehouseFormData): Promise<War
       address: warehouse.address || null,
       manager: warehouse.manager || null,
       phone: warehouse.phone || null,
+      organization_id: warehouse.organization_id ?? null,
       created_at: new Date().toISOString(),
       updated_at: null
     };
@@ -139,6 +144,7 @@ export async function createWarehouse(warehouse: WarehouseFormData): Promise<War
       address: warehouse.address || null,
       manager: warehouse.manager || null,
       phone: warehouse.phone || null,
+      organization_id: warehouse.organization_id ?? null,
       created_at: now,
       updated_at: now
     };
@@ -159,6 +165,7 @@ export async function createWarehouse(warehouse: WarehouseFormData): Promise<War
         address: warehouse.address || null,
         manager: warehouse.manager || null,
         phone: warehouse.phone || null,
+        organization_id: warehouse.organization_id ?? null,
         created_at: new Date().toISOString(),
         updated_at: null
       };
@@ -178,6 +185,7 @@ export async function createWarehouse(warehouse: WarehouseFormData): Promise<War
       address: warehouse.address || null,
       manager: warehouse.manager || null,
       phone: warehouse.phone || null,
+      organization_id: warehouse.organization_id ?? null,
       created_at: new Date().toISOString(),
       updated_at: null
     };

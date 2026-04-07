@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Plus, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet } from 'lucide-react';
+import { Plus, Pencil, Trash2, Search, Upload, Download, FileSpreadsheet, FileDown } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -43,6 +43,9 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { Product, ProductFormData, fetchProducts, createProduct, updateProduct, deleteProduct } from '@/services/product-service';
+import { InventoryItem, getProductInventory } from '@/services/inventory-service';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { ProductCategory, ProductUnit, fetchCategories, fetchUnits } from '@/services/category-service';
 
 interface ProductForm {
   code: string;
@@ -80,6 +83,9 @@ export default function ProductsPage() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [form, setForm] = useState<ProductForm>(initialForm);
+  const [inventoryMap, setInventoryMap] = useState<Record<number, InventoryItem[]>>({});
+  const [categoryList, setCategoryList] = useState<ProductCategory[]>([]);
+  const [unitList, setUnitList] = useState<ProductUnit[]>([]);
 
   useEffect(() => {
     loadProducts();
@@ -88,8 +94,21 @@ export default function ProductsPage() {
   const loadProducts = async () => {
     try {
       setLoading(true);
-      const data = await fetchProducts();
+      const [data, cats, uts] = await Promise.all([
+        fetchProducts(),
+        fetchCategories().catch(() => []),
+        fetchUnits().catch(() => []),
+      ]);
       setProducts(data);
+      setCategoryList(cats.filter(c => c.is_active));
+      setUnitList(uts.filter(u => u.is_active));
+      // 并行获取每个商品的库存分布
+      const inventoryResults = await Promise.all(
+        data.map(p => getProductInventory(p.id).catch(() => []))
+      );
+      const map: Record<number, InventoryItem[]> = {};
+      data.forEach((p, i) => { map[p.id] = inventoryResults[i]; });
+      setInventoryMap(map);
     } catch (error) {
       console.error('获取商品列表失败:', error);
     } finally {
@@ -181,26 +200,102 @@ export default function ProductsPage() {
     }
   };
 
+  // 模板列头定义
+  const TEMPLATE_HEADERS = ['商品编码', '商品名称', '类别', '单位', '规格', '条码', '采购价格', '销售价格', '最小库存', '最大库存', '启用状态'];
+
+  // 导入结果状态
+  const [importResult, setImportResult] = useState<{ success: number; failed: number; skipped: number; errors: string[] } | null>(null);
+  const [importResultOpen, setImportResultOpen] = useState(false);
+  const [importing, setImporting] = useState(false);
+
+  // 下载导入模板
+  const handleDownloadTemplate = () => {
+    try {
+      const wb = XLSX.utils.book_new();
+
+      // 主数据 sheet - 带示例行
+      const sampleRows = [
+        { '商品编码': 'PRD001', '商品名称': '对讲机', '类别': '通讯设备', '单位': '台', '规格': '数字对讲机', '条码': '6901234567890', '采购价格': 200, '销售价格': 300, '最小库存': 10, '最大库存': 200, '启用状态': '是' },
+        { '商品编码': 'PRD002', '商品名称': '警棍', '类别': '防暴器材', '单位': '根', '规格': '伸缩警棍', '条码': '', '采购价格': 30, '销售价格': 50, '最小库存': 50, '最大库存': 500, '启用状态': '是' },
+      ];
+      const ws1 = XLSX.utils.json_to_sheet(sampleRows);
+      // 设置列宽
+      ws1['!cols'] = [
+        { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 8 }, { wch: 16 },
+        { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+      ];
+      XLSX.utils.book_append_sheet(wb, ws1, '商品数据');
+
+      // 类别参考 sheet
+      const catRows = categoryList.length > 0
+        ? categoryList.map(c => ({ '可用类别': c.name }))
+        : [{ '可用类别': '（请先在系统设置中添加类别）' }];
+      const ws2 = XLSX.utils.json_to_sheet(catRows);
+      ws2['!cols'] = [{ wch: 30 }];
+      XLSX.utils.book_append_sheet(wb, ws2, '类别参考');
+
+      // 单位参考 sheet
+      const unitRows = unitList.length > 0
+        ? unitList.map(u => ({ '可用单位': u.name }))
+        : [{ '可用单位': '（请先在系统设置中添加单位）' }];
+      const ws3 = XLSX.utils.json_to_sheet(unitRows);
+      ws3['!cols'] = [{ wch: 20 }];
+      XLSX.utils.book_append_sheet(wb, ws3, '单位参考');
+
+      // 填写说明 sheet
+      const helpRows = [
+        { '字段': '商品编码', '是否必填': '是', '说明': '唯一标识，不可重复' },
+        { '字段': '商品名称', '是否必填': '是', '说明': '商品名称' },
+        { '字段': '类别', '是否必填': '否', '说明': '请参考"类别参考"sheet中的可用类别' },
+        { '字段': '单位', '是否必填': '是', '说明': '请参考"单位参考"sheet中的可用单位' },
+        { '字段': '规格', '是否必填': '否', '说明': '商品规格型号' },
+        { '字段': '条码', '是否必填': '否', '说明': '商品条码/条形码' },
+        { '字段': '采购价格', '是否必填': '否', '说明': '数字，支持两位小数' },
+        { '字段': '销售价格', '是否必填': '否', '说明': '数字，支持两位小数' },
+        { '字段': '最小库存', '是否必填': '否', '说明': '整数，低于此值触发预警' },
+        { '字段': '最大库存', '是否必填': '否', '说明': '整数' },
+        { '字段': '启用状态', '是否必填': '否', '说明': '填"是"或"否"，默认"是"' },
+      ];
+      const ws4 = XLSX.utils.json_to_sheet(helpRows);
+      ws4['!cols'] = [{ wch: 12 }, { wch: 10 }, { wch: 40 }];
+      XLSX.utils.book_append_sheet(wb, ws4, '填写说明');
+
+      XLSX.writeFile(wb, '商品导入模板.xlsx');
+    } catch (error) {
+      console.error('下载模板失败:', error);
+      alert('下载模板失败，请重试');
+    }
+  };
+
   const handleExport = () => {
     try {
       const data = products.map((product) => ({
         '商品编码': product.code,
         '商品名称': product.name,
-        '类别': product.category || '-',
+        '类别': product.category || '',
         '单位': product.unit,
-        '规格': product.specification || '-',
-        '条码': product.barcode || '-',
-        '采购价格': product.purchase_price || 0,
-        '销售价格': product.selling_price || 0,
-        '最小库存': product.min_stock || 0,
-        '最大库存': product.max_stock || 0,
+        '规格': product.specification || '',
+        '条码': product.barcode || '',
+        '采购价格': product.purchase_price ? parseFloat(product.purchase_price) : '',
+        '销售价格': product.selling_price ? parseFloat(product.selling_price) : '',
+        '最小库存': product.min_stock ?? '',
+        '最大库存': product.max_stock ?? '',
         '启用状态': product.is_active ? '是' : '否',
       }));
 
-      const worksheet = XLSX.utils.json_to_sheet(data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, '商品列表');
-      XLSX.writeFile(workbook, '商品列表.xlsx');
+      if (data.length === 0) {
+        // 导出空模板头
+        data.push(Object.fromEntries(TEMPLATE_HEADERS.map(h => [h, ''])) as any);
+      }
+
+      const ws = XLSX.utils.json_to_sheet(data);
+      ws['!cols'] = [
+        { wch: 14 }, { wch: 16 }, { wch: 12 }, { wch: 8 }, { wch: 16 },
+        { wch: 18 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '商品列表');
+      XLSX.writeFile(wb, `商品列表_${new Date().toISOString().slice(0, 10)}.xlsx`);
     } catch (error) {
       console.error('导出失败:', error);
       alert('导出失败，请重试');
@@ -211,29 +306,107 @@ export default function ProductsPage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    try {
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        try {
-          const data = new Uint8Array(event.target?.result as ArrayBuffer);
-          const workbook = XLSX.read(data, { type: 'array' });
-          const sheetName = workbook.SheetNames[0];
-          const worksheet = workbook.Sheets[sheetName];
-          const jsonData = XLSX.utils.sheet_to_json(worksheet);
+    setImporting(true);
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const data = new Uint8Array(event.target?.result as ArrayBuffer);
+        const workbook = XLSX.read(data, { type: 'array' });
+        // 优先找"商品数据" sheet，否则用第一个sheet
+        const sheetName = workbook.SheetNames.includes('商品数据') ? '商品数据' : workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[sheetName];
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, any>>(worksheet);
 
-          // 简单处理导入数据
-          alert('导入功能需要完整的数据映射，当前仅演示');
-        } catch (error) {
-          console.error('解析文件失败:', error);
-          alert('文件格式不正确');
+        if (jsonData.length === 0) {
+          alert('导入文件中没有数据');
+          setImporting(false);
+          return;
         }
-      };
-      reader.readAsArrayBuffer(file);
-    } catch (error) {
-      console.error('导入失败:', error);
-      alert('导入失败，请重试');
-    }
 
+        // 获取已有编码用于去重
+        const existingCodes = new Set(products.map(p => p.code.trim().toUpperCase()));
+        const validCategories = new Set(categoryList.map(c => c.name));
+        const validUnits = new Set(unitList.map(u => u.name));
+
+        let success = 0;
+        let failed = 0;
+        let skipped = 0;
+        const errors: string[] = [];
+
+        for (let i = 0; i < jsonData.length; i++) {
+          const row = jsonData[i];
+          const rowNum = i + 2; // Excel行号（含表头）
+          const code = String(row['商品编码'] || '').trim();
+          const name = String(row['商品名称'] || '').trim();
+
+          // 必填校验
+          if (!code) {
+            errors.push(`第${rowNum}行: 缺少商品编码，已跳过`);
+            skipped++;
+            continue;
+          }
+          if (!name) {
+            errors.push(`第${rowNum}行: 缺少商品名称，已跳过`);
+            skipped++;
+            continue;
+          }
+
+          // 编码重复校验
+          if (existingCodes.has(code.toUpperCase())) {
+            errors.push(`第${rowNum}行: 编码"${code}"已存在，已跳过`);
+            skipped++;
+            continue;
+          }
+
+          const category = String(row['类别'] || '').trim();
+          const unit = String(row['单位'] || '').trim();
+
+          // 单位校验提示（不阻止导入）
+          if (unit && validUnits.size > 0 && !validUnits.has(unit)) {
+            errors.push(`第${rowNum}行: 单位"${unit}"不在预设列表中，但已导入`);
+          }
+          if (category && validCategories.size > 0 && !validCategories.has(category)) {
+            errors.push(`第${rowNum}行: 类别"${category}"不在预设列表中，但已导入`);
+          }
+
+          const activeStr = String(row['启用状态'] || '是').trim();
+
+          try {
+            const productData: ProductFormData = {
+              code,
+              name,
+              category: category || undefined,
+              unit: unit || '个',
+              specification: String(row['规格'] || '').trim() || undefined,
+              barcode: String(row['条码'] || '').trim() || undefined,
+              purchase_price: parseFloat(String(row['采购价格'] || '')) || undefined,
+              selling_price: parseFloat(String(row['销售价格'] || '')) || undefined,
+              min_stock: parseInt(String(row['最小库存'] || '')) || undefined,
+              max_stock: parseInt(String(row['最大库存'] || '')) || undefined,
+              is_active: activeStr !== '否',
+            };
+            await createProduct(productData);
+            existingCodes.add(code.toUpperCase()); // 防止同批次重复
+            success++;
+          } catch (err) {
+            errors.push(`第${rowNum}行: 创建失败 - ${err instanceof Error ? err.message : '未知错误'}`);
+            failed++;
+          }
+        }
+
+        setImportResult({ success, failed, skipped, errors });
+        setImportResultOpen(true);
+        if (success > 0) {
+          await loadProducts();
+        }
+      } catch (error) {
+        console.error('解析文件失败:', error);
+        alert('文件格式不正确，请使用标准模板');
+      } finally {
+        setImporting(false);
+      }
+    };
+    reader.readAsArrayBuffer(file);
     e.target.value = '';
   };
 
@@ -266,9 +439,13 @@ export default function ProductsPage() {
             onChange={handleImport}
             className="hidden"
           />
-          <Button variant="outline" onClick={() => document.getElementById('import-file')?.click()}>
+          <Button variant="outline" onClick={handleDownloadTemplate}>
+            <FileDown className="mr-2 h-4 w-4" />
+            下载模板
+          </Button>
+          <Button variant="outline" onClick={() => document.getElementById('import-file')?.click()} disabled={importing}>
             <Upload className="mr-2 h-4 w-4" />
-            导入
+            {importing ? '导入中...' : '导入'}
           </Button>
           <Button variant="outline" onClick={handleExport}>
             <Download className="mr-2 h-4 w-4" />
@@ -305,6 +482,8 @@ export default function ProductsPage() {
               <TableHead>单位</TableHead>
               <TableHead>采购价</TableHead>
               <TableHead>销售价</TableHead>
+              <TableHead>库存数量</TableHead>
+              <TableHead>所在仓库</TableHead>
               <TableHead>状态</TableHead>
               <TableHead className="text-right">操作</TableHead>
             </TableRow>
@@ -312,7 +491,7 @@ export default function ProductsPage() {
           <TableBody>
             {filteredProducts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center py-8 text-muted-foreground">
+                <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
                   暂无数据
                 </TableCell>
               </TableRow>
@@ -325,6 +504,53 @@ export default function ProductsPage() {
                   <TableCell>{product.unit}</TableCell>
                   <TableCell>¥{product.purchase_price || 0}</TableCell>
                   <TableCell>¥{product.selling_price || 0}</TableCell>
+                  <TableCell>
+                    {(() => {
+                      const items = inventoryMap[product.id] || [];
+                      const total = items.reduce((sum, i) => sum + i.quantity, 0);
+                      return total > 0 ? (
+                        <span className="font-medium">{total}</span>
+                      ) : (
+                        <span className="text-muted-foreground">0</span>
+                      );
+                    })()}
+                  </TableCell>
+                  <TableCell>
+                    {(() => {
+                      const items = inventoryMap[product.id] || [];
+                      if (items.length === 0) return <span className="text-muted-foreground">-</span>;
+                      return (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex flex-wrap gap-1 max-w-[200px]">
+                                {items.slice(0, 2).map((inv) => (
+                                  <Badge key={inv.id} variant="outline" className="text-xs whitespace-nowrap">
+                                    {inv.warehouse?.name || '未知仓库'}({inv.quantity})
+                                  </Badge>
+                                ))}
+                                {items.length > 2 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    +{items.length - 2}
+                                  </Badge>
+                                )}
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="max-w-xs">
+                              <div className="space-y-1">
+                                {items.map((inv) => (
+                                  <div key={inv.id} className="flex justify-between gap-4 text-xs">
+                                    <span>{inv.warehouse?.name || '未知仓库'}</span>
+                                    <span className="font-medium">{inv.quantity}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      );
+                    })()}
+                  </TableCell>
                   <TableCell>
                     <Badge variant={product.is_active ? 'default' : 'secondary'}>
                       {product.is_active ? '启用' : '禁用'}
@@ -393,21 +619,37 @@ export default function ProductsPage() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="category">类别</Label>
-                <Input
-                  id="category"
-                  value={form.category}
-                  onChange={(e) => setForm({ ...form, category: e.target.value })}
-                  placeholder="请输入类别"
-                />
+                <Select
+                  value={form.category || '_none'}
+                  onValueChange={(value) => setForm({ ...form, category: value === '_none' ? '' : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择类别" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">不选择</SelectItem>
+                    {categoryList.map(cat => (
+                      <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="unit">单位</Label>
-                <Input
-                  id="unit"
-                  value={form.unit}
-                  onChange={(e) => setForm({ ...form, unit: e.target.value })}
-                  placeholder="请输入单位"
-                />
+                <Select
+                  value={form.unit || '_none'}
+                  onValueChange={(value) => setForm({ ...form, unit: value === '_none' ? '' : value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="选择单位" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">不选择</SelectItem>
+                    {unitList.map(u => (
+                      <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -515,6 +757,47 @@ export default function ProductsPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 导入结果对话框 */}
+      <Dialog open={importResultOpen} onOpenChange={setImportResultOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>导入结果</DialogTitle>
+            <DialogDescription>商品数据导入完成</DialogDescription>
+          </DialogHeader>
+          {importResult && (
+            <div className="space-y-4 py-2">
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-lg border bg-green-50 dark:bg-green-950 p-3 text-center">
+                  <div className="text-2xl font-bold text-green-600">{importResult.success}</div>
+                  <div className="text-xs text-muted-foreground mt-1">成功导入</div>
+                </div>
+                <div className="rounded-lg border bg-yellow-50 dark:bg-yellow-950 p-3 text-center">
+                  <div className="text-2xl font-bold text-yellow-600">{importResult.skipped}</div>
+                  <div className="text-xs text-muted-foreground mt-1">跳过</div>
+                </div>
+                <div className="rounded-lg border bg-red-50 dark:bg-red-950 p-3 text-center">
+                  <div className="text-2xl font-bold text-red-600">{importResult.failed}</div>
+                  <div className="text-xs text-muted-foreground mt-1">失败</div>
+                </div>
+              </div>
+              {importResult.errors.length > 0 && (
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium">详细信息：</Label>
+                  <div className="max-h-48 overflow-y-auto rounded-md border bg-muted/30 p-3 space-y-1">
+                    {importResult.errors.map((err, idx) => (
+                      <div key={idx} className="text-xs text-muted-foreground">{err}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setImportResultOpen(false)}>确定</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

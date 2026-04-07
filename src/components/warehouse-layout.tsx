@@ -15,7 +15,8 @@ import {
   X,
   Home,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  BarChart3
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -39,6 +40,7 @@ const navigation = [
   { name: '库存盘点', href: '/stock-count', icon: ClipboardCheck },
   { name: '库存调拨', href: '/transfer', icon: ArrowLeftRight },
   { name: '审核中心', href: '/approvals', icon: FileCheck },
+  { name: '统计报表', href: '/reports', icon: BarChart3 },
 ];
 
 interface LayoutProps {
