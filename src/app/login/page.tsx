@@ -59,6 +59,9 @@ export default function LoginPage() {
           role_id: user.role_id,
           organization_id: user.organization_id,
           department: user.department,
+          avatar_url: user.avatar_url || null,
+          email: user.email || null,
+          phone: user.phone || null,
         }));
         
         // 跳转到首页

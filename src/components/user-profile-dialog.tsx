@@ -104,10 +104,19 @@ export default function UserProfileDialog({ open, onOpenChange }: UserProfileDia
       const result = await updateUserAvatar(currentUser.id, avatarUrl);
       console.log('头像更新成功:', result);
       
-      // Update localStorage - currentUser
-      const updatedUser = { ...currentUser, avatar_url: avatarUrl };
-      localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-      console.log('currentUser已更新到localStorage');
+      // 从users列表中获取最新的用户数据
+      const allUsers = JSON.parse(localStorage.getItem('users') || '{}').users || [];
+      const updatedUser = allUsers.find((u: any) => u.id === currentUser.id);
+      
+      if (updatedUser) {
+        // 更新currentUser为最新数据
+        localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+        console.log('currentUser已从users列表同步');
+      } else {
+        // 如果找不到，至少保留avatar_url
+        const fallbackUser = { ...currentUser, avatar_url: avatarUrl };
+        localStorage.setItem('currentUser', JSON.stringify(fallbackUser));
+      }
       
       toast.success('头像已更新，页面将刷新');
       
