@@ -41,80 +41,37 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 // 登录验证
 export async function login(username: string, password: string): Promise<LoginResult> {
   try {
-    // 尝试从API获取用户列表
-    const response = await fetch('/api/users', {
-      method: 'GET',
-      headers: { 'Content-Type': 'application/json' }
+    // 直接调用登录API（服务端处理密码哈希，避免HTTP下crypto.subtle不可用）
+    const response = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
     });
 
     if (!response.ok) {
-      console.warn('API获取用户失败，尝试直接调用Supabase');
-      // 如果API失败，尝试直接调用user-service
-      const { loginUser } = await import('./user-service');
-      const user = await loginUser(username, password);
-      
-      if (user) {
-        return {
-          success: true,
-          user: {
-            id: user.id,
-            username: user.username,
-            name: user.name,
-            role_id: user.role_id,
-            organization_id: user.organization_id,
-            department: user.department,
-            avatar_url: user.avatar_url,
-            email: user.email,
-            phone: user.phone,
-            is_active: user.is_active
-          }
-        };
-      } else {
-        return { success: false, error: '用户名或密码错误' };
-      }
+      const errorData = await response.json().catch(() => ({}));
+      return {
+        success: false,
+        error: errorData.error || '用户名或密码错误'
+      };
     }
 
-    const users = await response.json();
+    const data = await response.json();
     
-    // 查找用户
-    const user = users.find((u: any) => u.username === username && u.is_active);
-    
-    if (!user) {
-      return { success: false, error: '用户名或密码错误' };
+    if (data.user) {
+      return {
+        success: true,
+        user: data.user
+      };
     }
 
-    // 验证密码
-    if (user.password_hash) {
-      const isValid = await verifyPassword(password, user.password_hash);
-      if (!isValid) {
-        return { success: false, error: '用户名或密码错误' };
-      }
-    } else {
-      // 没有密码哈希，使用默认密码
-      if (password !== '123456') {
-        return { success: false, error: '用户名或密码错误' };
-      }
-    }
-
-    // 登录成功，返回用户信息
     return {
-      success: true,
-      user: {
-        id: user.id,
-        username: user.username,
-        name: user.name,
-        role_id: user.role_id,
-        organization_id: user.organization_id,
-        department: user.department,
-        avatar_url: user.avatar_url,
-        email: user.email,
-        phone: user.phone,
-        is_active: user.is_active
-      }
+      success: false,
+      error: data.error || '用户名或密码错误'
     };
   } catch (error) {
     console.error('登录失败:', error);
-    return { success: false, error: '登录失败，请重试' };
+    return { success: false, error: '网络连接失败，请检查网络' };
   }
 }
 
