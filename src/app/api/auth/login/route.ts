@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
-import { query } from '@/lib/postgres';
 import { createHash } from 'crypto';
+import { getSupabase } from '@/lib/supabase-browser';
 
 // 密码哈希函数
 function hashPassword(password: string): string {
@@ -23,24 +23,26 @@ export async function POST(request: Request) {
       );
     }
 
-    // 从数据库查询用户
-    const result = await query(
-      'SELECT * FROM users WHERE username = $1 AND is_active = true',
-      [username]
-    );
+    const supabase = getSupabase();
 
-    if (result.rows.length === 0) {
+    // 从Supabase查询用户
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('username', username)
+      .eq('is_active', true)
+      .single();
+
+    if (error || !user) {
       return NextResponse.json(
         { error: '用户名或密码错误' },
         { status: 401 }
       );
     }
 
-    const user = result.rows[0];
-
     // 验证密码
     if (user.password_hash) {
-      const isValid = await verifyPassword(password, user.password_hash);
+      const isValid = verifyPassword(password, user.password_hash);
       if (!isValid) {
         return NextResponse.json(
           { error: '用户名或密码错误' },
@@ -56,11 +58,11 @@ export async function POST(request: Request) {
         );
       }
       // 首次登录后设置密码哈希
-      const hash = await hashPassword(password);
-      await query(
-        'UPDATE users SET password_hash = $1 WHERE id = $2',
-        [hash, user.id]
-      );
+      const hash = hashPassword(password);
+      await supabase
+        .from('users')
+        .update({ password_hash: hash })
+        .eq('id', user.id);
     }
 
     // 返回用户信息（不包含密码）
