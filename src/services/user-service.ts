@@ -839,9 +839,12 @@ export async function updateUserAvatar(userId: number, avatarUrl: string): Promi
  * 更新当前用户信息（姓名、电话、邮箱等）
  */
 export async function updateCurrentUser(userId: number, updates: { name?: string; phone?: string; email?: string }): Promise<User> {
+  console.log('updateCurrentUser called, userId:', userId, 'updates:', updates);
   const hasSupabase = await isSupabaseAvailable();
+  console.log('Supabase available for updateCurrentUser:', hasSupabase);
   
   if (!hasSupabase) {
+    console.log('使用localStorage模式更新用户信息');
     const allUsers = await fetchUsers();
     const updatedUsers = allUsers.map(u => 
       u.id === userId ? { ...u, ...updates, updated_at: new Date().toISOString() } : u
@@ -857,6 +860,7 @@ export async function updateCurrentUser(userId: number, updates: { name?: string
     }
     
     localStorage.setItem('users', JSON.stringify({ users: updatedUsers, nextId }));
+    console.log('用户信息已保存到localStorage');
     const updated = updatedUsers.find(u => u.id === userId);
     if (!updated) throw new Error('用户不存在');
     return updated;
@@ -864,6 +868,8 @@ export async function updateCurrentUser(userId: number, updates: { name?: string
 
   try {
     const client = getSupabaseClient();
+    console.log('尝试通过Supabase更新用户信息');
+    
     const { data, error } = await client
       .from('users')
       .update({ ...updates, updated_at: new Date().toISOString() })
@@ -871,10 +877,16 @@ export async function updateCurrentUser(userId: number, updates: { name?: string
       .select()
       .single();
     
-    if (error || !data) {
-      throw new Error('信息更新失败');
+    if (error) {
+      console.error('Supabase更新用户信息失败:', error);
+      throw new Error('信息更新失败: ' + error.message);
     }
     
+    if (!data) {
+      throw new Error('信息更新失败：未找到用户');
+    }
+    
+    console.log('Supabase用户信息更新成功');
     return data as User;
   } catch (error) {
     console.error('更新信息失败:', error);
