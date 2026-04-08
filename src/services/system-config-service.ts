@@ -1,5 +1,3 @@
-import { query } from '@/lib/postgres';
-
 export interface SystemConfigMap {
   unit_name: string;
   unit_logo_url: string;
@@ -20,21 +18,24 @@ const DEFAULT_CONFIGS: SystemConfigMap = {
  */
 export async function fetchSystemConfigs(): Promise<SystemConfigMap> {
   try {
-    const result = await query('SELECT config_key, config_value FROM system_configs');
-    
-    const configMap: SystemConfigMap = { ...DEFAULT_CONFIGS };
-    for (const row of result.rows) {
-      configMap[row.config_key] = row.config_value || DEFAULT_CONFIGS[row.config_key] || '';
+    const response = await fetch('/api/system-config');
+    const data = await response.json();
+
+    if (data.success && data.configs) {
+      const configMap: SystemConfigMap = { ...DEFAULT_CONFIGS, ...data.configs };
+
+      // 同步到 localStorage 作为缓存
+      try {
+        localStorage.setItem('system_configs', JSON.stringify(configMap));
+      } catch { /* ignore */ }
+
+      return configMap;
     }
 
-    // 同步到 localStorage 作为缓存
-    try {
-      localStorage.setItem('system_configs', JSON.stringify(configMap));
-    } catch { /* ignore */ }
-
-    return configMap;
+    // API失败，使用localStorage
+    return getConfigsFromLocalStorage();
   } catch (error) {
-    console.warn('PostgreSQL 获取系统配置失败，使用 localStorage:', error);
+    console.warn('获取系统配置失败，使用 localStorage:', error);
     return getConfigsFromLocalStorage();
   }
 }
@@ -49,22 +50,16 @@ export async function saveSystemConfigs(configs: SystemConfigMap): Promise<boole
   } catch { /* ignore */ }
 
   try {
-    const now = new Date().toISOString();
+    const response = await fetch('/api/system-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(configs)
+    });
 
-    // 逐项 upsert
-    for (const [key, value] of Object.entries(configs)) {
-      await query(
-        `INSERT INTO system_configs (config_key, config_value, updated_at) 
-         VALUES ($1, $2, $3) 
-         ON CONFLICT (config_key) 
-         DO UPDATE SET config_value = $2, updated_at = $3`,
-        [key, value, now]
-      );
-    }
-
-    return true;
+    const data = await response.json();
+    return data.success === true;
   } catch (error) {
-    console.error('PostgreSQL 保存系统配置失败:', error);
+    console.error('保存系统配置失败:', error);
     return true; // localStorage 已保存，返回成功
   }
 }
