@@ -87,22 +87,37 @@ export default function UserProfileDialog({ open, onOpenChange }: UserProfileDia
   };
 
   const handleUpdateAvatar = async () => {
-    if (!currentUser?.id) return;
+    if (!currentUser?.id) {
+      toast.error('用户信息不存在');
+      return;
+    }
+    
+    if (!avatarUrl) {
+      toast.error('请先选择头像');
+      return;
+    }
     
     try {
       setUpdatingAvatar(true);
-      await updateUserAvatar(currentUser.id, avatarUrl);
+      console.log('开始更新头像，数据长度:', avatarUrl.length);
       
-      // Update localStorage
+      const result = await updateUserAvatar(currentUser.id, avatarUrl);
+      console.log('头像更新成功:', result);
+      
+      // Update localStorage - currentUser
       const updatedUser = { ...currentUser, avatar_url: avatarUrl };
       localStorage.setItem('currentUser', JSON.stringify(updatedUser));
+      console.log('currentUser已更新到localStorage');
       
-      // Trigger page reload to update layout
-      window.location.reload();
+      toast.success('头像已更新，页面将刷新');
       
-      toast.success('头像已更新');
+      // Delay reload to show success message
+      setTimeout(() => {
+        window.location.reload();
+      }, 500);
     } catch (error: any) {
-      toast.error(error.message || '头像更新失败');
+      console.error('头像更新失败:', error);
+      toast.error(error.message || '头像更新失败，请重试');
     } finally {
       setUpdatingAvatar(false);
     }

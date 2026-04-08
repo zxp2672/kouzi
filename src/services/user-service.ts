@@ -746,10 +746,16 @@ export { hashPassword };
  * 更新用户头像
  */
 export async function updateUserAvatar(userId: number, avatarUrl: string): Promise<User> {
+  console.log('updateUserAvatar called, userId:', userId, 'dataLength:', avatarUrl?.length);
+  
   const hasSupabase = await isSupabaseAvailable();
+  console.log('Supabase available:', hasSupabase);
   
   if (!hasSupabase) {
+    console.log('使用localStorage模式保存头像');
     const allUsers = await fetchUsers();
+    console.log('获取到用户列表，数量:', allUsers.length);
+    
     const updatedUsers = allUsers.map(u => 
       u.id === userId ? { ...u, avatar_url: avatarUrl, updated_at: new Date().toISOString() } : u
     );
@@ -763,7 +769,17 @@ export async function updateUserAvatar(userId: number, avatarUrl: string): Promi
       } catch { /* ignore */ }
     }
     
-    localStorage.setItem('users', JSON.stringify({ users: updatedUsers, nextId }));
+    try {
+      localStorage.setItem('users', JSON.stringify({ users: updatedUsers, nextId }));
+      console.log('头像已保存到localStorage users');
+    } catch (storageError: any) {
+      console.error('localStorage保存失败:', storageError);
+      if (storageError.name === 'QuotaExceededError') {
+        throw new Error('存储空间不足，图片可能太大，请选择小于1MB的图片');
+      }
+      throw new Error('本地存储失败: ' + storageError.message);
+    }
+    
     const updated = updatedUsers.find(u => u.id === userId);
     if (!updated) throw new Error('用户不存在');
     return updated;
@@ -771,6 +787,8 @@ export async function updateUserAvatar(userId: number, avatarUrl: string): Promi
 
   try {
     const client = getSupabaseClient();
+    console.log('尝试通过Supabase更新头像');
+    
     const { data, error } = await client
       .from('users')
       .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
@@ -809,6 +827,7 @@ export async function updateUserAvatar(userId: number, avatarUrl: string): Promi
       throw new Error('头像更新失败：未找到用户');
     }
     
+    console.log('Supabase头像更新成功');
     return data as User;
   } catch (error: any) {
     console.error('更新头像失败:', error);
