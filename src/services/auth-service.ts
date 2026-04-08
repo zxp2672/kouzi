@@ -1,6 +1,7 @@
 /**
  * 认证服务 - 生产环境版本
  * 负责用户登录、会话管理
+ * 支持Supabase和API降级
  */
 
 export interface User {
@@ -40,14 +41,37 @@ export async function verifyPassword(password: string, hash: string): Promise<bo
 // 登录验证
 export async function login(username: string, password: string): Promise<LoginResult> {
   try {
-    // 从API获取用户列表
+    // 尝试从API获取用户列表
     const response = await fetch('/api/users', {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' }
     });
 
     if (!response.ok) {
-      return { success: false, error: '登录服务异常' };
+      console.warn('API获取用户失败，尝试直接调用Supabase');
+      // 如果API失败，尝试直接调用user-service
+      const { loginUser } = await import('./user-service');
+      const user = await loginUser(username, password);
+      
+      if (user) {
+        return {
+          success: true,
+          user: {
+            id: user.id,
+            username: user.username,
+            name: user.name,
+            role_id: user.role_id,
+            organization_id: user.organization_id,
+            department: user.department,
+            avatar_url: user.avatar_url,
+            email: user.email,
+            phone: user.phone,
+            is_active: user.is_active
+          }
+        };
+      } else {
+        return { success: false, error: '用户名或密码错误' };
+      }
     }
 
     const users = await response.json();

@@ -52,7 +52,10 @@ async function verifyPassword(password: string, hash: string): Promise<boolean> 
 async function isSupabaseAvailable(): Promise<boolean> {
   try {
     const { url } = getSupabaseCredentials();
-    return url !== 'https://mock.supabase.co';
+    // 检查是否是有效的Supabase URL（以https://开头且包含supabase.co）
+    const isValid = url.startsWith('https://') && url.includes('supabase.co');
+    console.log('Supabase URL检查:', { url, isValid });
+    return isValid;
   } catch {
     return false;
   }
