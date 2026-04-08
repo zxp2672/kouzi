@@ -117,6 +117,8 @@ export default function DashboardPage() {
   });
   const [lowStockList, setLowStockList] = useState<LowStockItem[]>([]);
   const [recentActivities, setRecentActivities] = useState<RecentActivity[]>([]);
+  const [inboundOrders, setInboundOrders] = useState<any[]>([]);
+  const [outboundOrders, setOutboundOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [systemConfig, setSystemConfig] = useState({
@@ -181,8 +183,8 @@ export default function DashboardPage() {
         lowStockItems,
         products,
         warehouses,
-        inboundOrders,
-        outboundOrders,
+        inboundData,
+        outboundData,
         transferOrders,
         stockCounts,
       ] = await Promise.all([
@@ -196,19 +198,23 @@ export default function DashboardPage() {
         fetchStockCounts().catch(() => []),
       ]);
 
+      // 保存到状态
+      setInboundOrders(inboundData);
+      setOutboundOrders(outboundData);
+
       // 构建仓库 ID → 名称映射
       const warehouseMap: Record<number, string> = {};
       warehouses.forEach(w => { warehouseMap[w.id] = w.name; });
 
       // 计算今日入库/出库数量
-      const todayInbound = inboundOrders.filter(o => isToday(o.created_at)).length;
-      const todayOutbound = outboundOrders.filter(o => isToday(o.created_at)).length;
+      const todayInbound = inboundData.filter((o: any) => isToday(o.created_at)).length;
+      const todayOutbound = outboundData.filter((o: any) => isToday(o.created_at)).length;
 
       // 计算待审核总数
-      const pendingInbound = inboundOrders.filter(o => o.status === 'pending').length;
-      const pendingOutbound = outboundOrders.filter(o => o.status === 'pending').length;
-      const pendingTransfer = transferOrders.filter(o => o.status === 'pending').length;
-      const pendingStockCount = stockCounts.filter(o => o.status === 'pending').length;
+      const pendingInbound = inboundData.filter((o: any) => o.status === 'pending').length;
+      const pendingOutbound = outboundData.filter((o: any) => o.status === 'pending').length;
+      const pendingTransfer = transferOrders.filter((o: any) => o.status === 'pending').length;
+      const pendingStockCount = stockCounts.filter((o: any) => o.status === 'pending').length;
       const pendingApprovals = pendingInbound + pendingOutbound + pendingTransfer + pendingStockCount;
 
       // 计算库存总价值（基于产品采购价 * 库存数量，简化为产品数 * 平均价）
@@ -241,7 +247,7 @@ export default function DashboardPage() {
       
       // 最近活动 - 合并入库、出库、调拨并按时间排序
       const allActivities: RecentActivity[] = [
-        ...inboundOrders.slice(0, 5).map(o => ({
+        ...inboundData.slice(0, 5).map((o: any) => ({
           id: o.id,
           type: '入库',
           order_no: o.order_no,
@@ -249,7 +255,7 @@ export default function DashboardPage() {
           status: o.status,
           created_at: o.created_at,
         })),
-        ...outboundOrders.slice(0, 5).map(o => ({
+        ...outboundData.slice(0, 5).map((o: any) => ({
           id: o.id + 10000,
           type: '出库',
           order_no: o.order_no,
@@ -257,7 +263,7 @@ export default function DashboardPage() {
           status: o.status,
           created_at: o.created_at,
         })),
-        ...transferOrders.slice(0, 5).map(o => ({
+        ...transferOrders.slice(0, 5).map((o: any) => ({
           id: o.id + 20000,
           type: '调拨',
           order_no: o.order_no,
@@ -531,9 +537,9 @@ export default function DashboardPage() {
         </motion.div>
       </div>
 
-      {/* 第三行：库存预警和最近活动 - 自适应剩余高度 */}
+      {/* 第三行：出入库动态图表和业务动态 - 自适应剩余高度 */}
       <div className="flex-1 grid grid-cols-2 gap-4 min-h-0">
-        {/* 库存预警列表 - 内部滚动 */}
+        {/* 出入库动态三维图表 */}
         <motion.div
           initial={{ opacity: 0, x: -20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -542,56 +548,82 @@ export default function DashboardPage() {
         >
           <div className="flex items-center justify-between mb-3 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-gradient-to-br from-amber-500 to-orange-400 rounded-lg flex items-center justify-center">
-                <AlertTriangle className="w-3.5 h-3.5 text-white" />
+              <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
+                <BarChart3 className="w-3.5 h-3.5 text-white" />
               </div>
-              <h2 className="text-base font-semibold">库存预警</h2>
+              <h2 className="text-base font-semibold">出入库动态</h2>
             </div>
-            <Badge variant="outline" className="text-amber-400 border-amber-400/30 bg-amber-400/10 text-xs">
-              {lowStockList.length} 项
+            <Badge variant="outline" className="text-blue-400 border-blue-400/30 bg-blue-400/10 text-xs">
+              实时统计
             </Badge>
           </div>
-          <div className="space-y-2 overflow-y-auto flex-1 pr-1">
-            <AnimatePresence>
-              {lowStockList.map((item, index) => (
-                <motion.div
-                  key={item.id}
-                  initial={{ opacity: 0, x: -10 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: 0.9 + index * 0.1 }}
-                  className="bg-white/5 border border-white/5 rounded-lg p-3 hover:bg-white/10 transition-all duration-300"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-sm truncate">{item.product_name}</p>
-                      <p className="text-xs text-slate-400 mt-0.5 truncate">
-                        {item.product_code} · {item.warehouse_name}
-                      </p>
+          {/* 简化的三维柱状图展示 */}
+          <div className="flex-1 flex items-end justify-around gap-2 pb-2 min-h-0">
+            {(() => {
+              // 统计最近7天的出入库数据
+              const last7Days = Array.from({ length: 7 }, (_, i) => {
+                const date = new Date();
+                date.setDate(date.getDate() - (6 - i));
+                const dateStr = date.toISOString().split('T')[0];
+                
+                const dayInbound = inboundOrders.filter(o => {
+                  const orderDate = new Date(o.created_at).toISOString().split('T')[0];
+                  return orderDate === dateStr && o.status === 'approved';
+                }).length;
+                
+                const dayOutbound = outboundOrders.filter(o => {
+                  const orderDate = new Date(o.created_at).toISOString().split('T')[0];
+                  return orderDate === dateStr && o.status === 'approved';
+                }).length;
+                
+                return {
+                  date: dateStr,
+                  label: `${date.getMonth() + 1}/${date.getDate()}`,
+                  inbound: dayInbound,
+                  outbound: dayOutbound,
+                };
+              });
+              
+              const maxVal = Math.max(...last7Days.map(d => Math.max(d.inbound, d.outbound)), 1);
+              
+              return last7Days.map((day, idx) => (
+                <div key={day.date} className="flex-1 flex flex-col items-center gap-1 min-w-0">
+                  <div className="flex gap-0.5 items-end w-full h-32">
+                    <div className="flex-1 flex flex-col justify-end">
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: `${(day.inbound / maxVal) * 100}%` }}
+                        transition={{ delay: 1 + idx * 0.1, duration: 0.8 }}
+                        className="bg-gradient-to-t from-cyan-500 to-blue-400 rounded-t min-h-[2px]"
+                      />
                     </div>
-                    <div className="text-right flex-shrink-0 ml-2">
-                      <p className="text-base font-bold text-amber-400">{item.quantity}</p>
-                      <p className="text-xs text-slate-500">最低: {item.min_stock}</p>
-                    </div>
-                  </div>
-                  <div className="mt-2">
-                    <div className="flex items-center justify-between text-xs text-slate-500 mb-1">
-                      <span>库存水平</span>
-                      <span>{Math.round((item.quantity / item.min_stock) * 100)}%</span>
-                    </div>
-                    <div className="h-1 bg-slate-800 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-red-500 via-amber-500 to-green-500 rounded-full transition-all duration-1000"
-                        style={{ width: `${Math.min((item.quantity / item.min_stock) * 100, 100)}%` }}
+                    <div className="flex-1 flex flex-col justify-end">
+                      <motion.div
+                        initial={{ height: 0 }}
+                        animate={{ height: `${(day.outbound / maxVal) * 100}%` }}
+                        transition={{ delay: 1.2 + idx * 0.1, duration: 0.8 }}
+                        className="bg-gradient-to-t from-rose-500 to-pink-400 rounded-t min-h-[2px]"
                       />
                     </div>
                   </div>
-                </motion.div>
-              ))}
-            </AnimatePresence>
+                  <span className="text-xs text-slate-400 truncate w-full text-center">{day.label}</span>
+                </div>
+              ));
+            })()}
+          </div>
+          <div className="flex items-center justify-center gap-4 mt-2 flex-shrink-0">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 bg-gradient-to-r from-cyan-500 to-blue-400 rounded" />
+              <span className="text-xs text-slate-400">入库</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 bg-gradient-to-r from-rose-500 to-pink-400 rounded" />
+              <span className="text-xs text-slate-400">出库</span>
+            </div>
           </div>
         </motion.div>
 
-        {/* 最近活动 - 内部滚动 */}
+        {/* 业务动态 - 慢速滚动，显示5行 */}
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           animate={{ opacity: 1, x: 0 }}
@@ -600,68 +632,70 @@ export default function DashboardPage() {
         >
           <div className="flex items-center justify-between mb-3 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
+              <div className="w-7 h-7 bg-gradient-to-br from-violet-500 to-purple-400 rounded-lg flex items-center justify-center">
                 <Activity className="w-3.5 h-3.5 text-white" />
               </div>
-              <h2 className="text-base font-semibold">最近活动</h2>
+              <h2 className="text-base font-semibold">业务动态</h2>
             </div>
-            <Badge variant="outline" className="text-blue-400 border-blue-400/30 bg-blue-400/10 text-xs">
+            <Badge variant="outline" className="text-violet-400 border-violet-400/30 bg-violet-400/10 text-xs">
               实时更新
             </Badge>
           </div>
-          <div className="space-y-2 overflow-y-auto flex-1 pr-1">
-            <AnimatePresence>
-              {recentActivities.map((activity, index) => {
-                const statusConfig = getStatusConfig(activity.status);
-                return (
-                  <motion.div
-                    key={activity.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.9 + index * 0.1 }}
-                    className="bg-white/5 border border-white/5 rounded-lg p-3 hover:bg-white/10 transition-all duration-300"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
-                          activity.type === '入库' 
-                            ? 'bg-gradient-to-br from-cyan-500 to-blue-400' 
-                            : activity.type === '出库'
-                            ? 'bg-gradient-to-br from-rose-500 to-pink-400'
-                            : 'bg-gradient-to-br from-violet-500 to-purple-400'
-                        }`}>
-                          {activity.type === '入库' ? (
-                            <ArrowDownToLine className="w-4 h-4 text-white" />
-                          ) : activity.type === '出库' ? (
-                            <ArrowUpFromLine className="w-4 h-4 text-white" />
-                          ) : (
-                            <Package className="w-4 h-4 text-white" />
-                          )}
+          <div className="flex-1 overflow-hidden relative min-h-0">
+            <div className="absolute inset-0 overflow-y-auto scrollbar-thin pr-1" style={{ scrollBehavior: 'smooth' }}>
+              <AnimatePresence>
+                {recentActivities.slice(0, 10).map((activity, index) => {
+                  const statusConfig = getStatusConfig(activity.status);
+                  return (
+                    <motion.div
+                      key={activity.id}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.9 + index * 0.1 }}
+                      className="bg-white/5 border border-white/5 rounded-lg p-2.5 mb-2 hover:bg-white/10 transition-all duration-300"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                            activity.type === '入库' 
+                              ? 'bg-gradient-to-br from-cyan-500 to-blue-400' 
+                              : activity.type === '出库'
+                              ? 'bg-gradient-to-br from-rose-500 to-pink-400'
+                              : 'bg-gradient-to-br from-violet-500 to-purple-400'
+                          }`}>
+                            {activity.type === '入库' ? (
+                              <ArrowDownToLine className="w-3.5 h-3.5 text-white" />
+                            ) : activity.type === '出库' ? (
+                              <ArrowUpFromLine className="w-3.5 h-3.5 text-white" />
+                            ) : (
+                              <Package className="w-3.5 h-3.5 text-white" />
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="font-medium text-xs flex items-center gap-1">
+                              {activity.type}
+                              <span className="text-xs text-slate-500 truncate">{activity.order_no}</span>
+                            </p>
+                            <p className="text-xs text-slate-400 truncate">{activity.warehouse_name}</p>
+                          </div>
                         </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-sm flex items-center gap-1.5">
-                            {activity.type}
-                            <span className="text-xs text-slate-500 truncate">{activity.order_no}</span>
+                        <div className="text-right flex-shrink-0 ml-2">
+                          <StatusBadge status={statusConfig.type} text={statusConfig.label} />
+                          <p className="text-xs text-slate-500 mt-1">
+                            {new Date(activity.created_at).toLocaleString('zh-CN', {
+                              month: 'numeric',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
                           </p>
-                          <p className="text-xs text-slate-400 truncate">{activity.warehouse_name}</p>
                         </div>
                       </div>
-                      <div className="text-right flex-shrink-0 ml-2">
-                        <StatusBadge status={statusConfig.type} text={statusConfig.label} />
-                        <p className="text-xs text-slate-500 mt-1.5">
-                          {new Date(activity.created_at).toLocaleString('zh-CN', {
-                            month: 'numeric',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              })}
-            </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
           </div>
         </motion.div>
       </div>
