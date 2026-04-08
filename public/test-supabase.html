@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>EdgeOne测试</title>
+</head>
+<body>
+  <h1>EdgeOne Supabase连接测试</h1>
+  <div id="result">测试中...</div>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script>
+    async function test() {
+      const result = document.getElementById('result');
+      
+      try {
+        const supabase = window.supabase.createClient(
+          'https://rcyeqrjalfzczdyspbog.supabase.co',
+          'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjeWVxcmphbGZ6Y3pkeXNwYm9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NjMxMjEsImV4cCI6MjA5MTEzOTEyMX0.Q-WS3GuGI3VWi61whHt1nAbEHyf-T6o2fBttqYhanD4'
+        );
+        
+        const { data, error } = await supabase.from('users').select('username, name').limit(5);
+        
+        if (error) {
+          result.innerHTML = '<p style="color:red">❌ 错误: ' + error.message + '</p>';
+        } else {
+          result.innerHTML = '<p style="color:green">✅ Supabase连接成功！</p><p>用户数量: ' + data.length + '</p><ul>' + 
+            data.map(u => '<li>' + u.username + ' (' + u.name + ')</li>').join('') + '</ul>';
+        }
+      } catch (e) {
+        result.innerHTML = '<p style="color:red">❌ 异常: ' + e.message + '</p>';
+      }
+    }
+    
+    test();
+  </script>
+</body>
+</html>

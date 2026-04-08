@@ -1,4 +1,5 @@
 import { getSupabaseClient, getSupabaseCredentials } from '@/storage/database/supabase-client';
+import { createClient } from '@supabase/supabase-js';
 
 export interface User {
   id: number;
@@ -59,6 +60,15 @@ async function isSupabaseAvailable(): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// 获取Supabase客户端（客户端直接使用）
+function getSupabaseClientDirect() {
+  const { url, anonKey } = getSupabaseCredentials();
+  if (url === 'https://mock.supabase.co') {
+    return null;
+  }
+  return createClient(url, anonKey);
 }
 
 const DEFAULT_USERS: User[] = [
