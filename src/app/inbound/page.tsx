@@ -166,7 +166,15 @@ export default function InboundPage() {
   const handleOpenDialog = () => {
     const newOrderNo = generateOrderNo();
     setOrderNo(newOrderNo);
-    setSelectedWarehouse('');
+    
+    // 普通用户和库管员默认选中第一个本单位仓库
+    const isAdmin = currentUser?.role_id === 1;
+    let defaultWarehouse = '';
+    if (!isAdmin && warehouses.length > 0) {
+      defaultWarehouse = warehouses[0].id.toString();
+    }
+    setSelectedWarehouse(defaultWarehouse);
+    
     setSupplier('');
     setInboundType('purchase');
     setRemark('');
