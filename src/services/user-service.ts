@@ -778,12 +778,39 @@ export async function updateUserAvatar(userId: number, avatarUrl: string): Promi
       .select()
       .single();
     
-    if (error || !data) {
-      throw new Error('头像更新失败');
+    if (error) {
+      console.error('Supabase头像更新错误:', error);
+      // 如果是因为字段不存在，降级到localStorage
+      if (error.code === '42703' || error.message?.includes('avatar_url')) {
+        console.warn('avatar_url字段不存在，降级到localStorage存储');
+        const allUsers = await fetchUsers();
+        const updatedUsers = allUsers.map(u => 
+          u.id === userId ? { ...u, avatar_url: avatarUrl, updated_at: new Date().toISOString() } : u
+        );
+        
+        const saved = localStorage.getItem('users');
+        let nextId = 3;
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            nextId = parsed.nextId || nextId;
+          } catch { /* ignore */ }
+        }
+        
+        localStorage.setItem('users', JSON.stringify({ users: updatedUsers, nextId }));
+        const updated = updatedUsers.find(u => u.id === userId);
+        if (!updated) throw new Error('用户不存在');
+        return updated;
+      }
+      throw new Error('头像更新失败: ' + error.message);
+    }
+    
+    if (!data) {
+      throw new Error('头像更新失败：未找到用户');
     }
     
     return data as User;
-  } catch (error) {
+  } catch (error: any) {
     console.error('更新头像失败:', error);
     throw error;
   }

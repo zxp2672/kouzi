@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS users (
   organization_id INTEGER REFERENCES organizations(id),
   role_id INTEGER REFERENCES roles(id),
   department VARCHAR(200),
+  avatar_url TEXT,
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ
