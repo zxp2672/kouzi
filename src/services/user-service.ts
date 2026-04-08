@@ -10,6 +10,7 @@ export interface User {
   role_id: number | null;
   organization_id: number | null;
   department: string | null;
+  avatar_url: string | null;
   is_active: boolean;
   created_at: string;
   updated_at: string | null;
@@ -24,6 +25,7 @@ export interface UserFormData {
   role_id?: number;
   organization_id?: number;
   department?: string;
+  avatar_url?: string;
   is_active?: boolean;
 }
 
@@ -67,6 +69,7 @@ const DEFAULT_USERS: User[] = [
     role_id: 1,
     organization_id: null,
     department: '公安局机关',
+    avatar_url: null,
     is_active: true,
     created_at: new Date().toISOString(),
     updated_at: null,
@@ -81,6 +84,7 @@ const DEFAULT_USERS: User[] = [
     role_id: 2,
     organization_id: null,
     department: '公安处机关',
+    avatar_url: null,
     is_active: true,
     created_at: new Date().toISOString(),
     updated_at: null,
@@ -172,6 +176,7 @@ export async function createUser(user: UserFormData): Promise<User> {
       role_id: user.role_id || null,
       organization_id: user.organization_id !== undefined ? user.organization_id : null,
       department: user.department || null,
+      avatar_url: user.avatar_url || null,
       is_active: user.is_active !== undefined ? user.is_active : true,
       created_at: new Date().toISOString(),
       updated_at: null
@@ -232,6 +237,7 @@ export async function createUser(user: UserFormData): Promise<User> {
         role_id: user.role_id || null,
         organization_id: user.organization_id !== undefined ? user.organization_id : null,
         department: user.department || null,
+        avatar_url: user.avatar_url || null,
         is_active: user.is_active !== undefined ? user.is_active : true,
         created_at: new Date().toISOString(),
         updated_at: null
@@ -267,6 +273,7 @@ export async function createUser(user: UserFormData): Promise<User> {
       role_id: user.role_id || null,
       organization_id: user.organization_id !== undefined ? user.organization_id : null,
       department: user.department || null,
+      avatar_url: user.avatar_url || null,
       is_active: user.is_active !== undefined ? user.is_active : true,
       created_at: new Date().toISOString(),
       updated_at: null
@@ -734,3 +741,97 @@ export async function initDefaultUsers(): Promise<void> {
 
 // 导出哈希函数供创建用户时使用
 export { hashPassword };
+
+/**
+ * 更新用户头像
+ */
+export async function updateUserAvatar(userId: number, avatarUrl: string): Promise<User> {
+  const hasSupabase = await isSupabaseAvailable();
+  
+  if (!hasSupabase) {
+    const allUsers = await fetchUsers();
+    const updatedUsers = allUsers.map(u => 
+      u.id === userId ? { ...u, avatar_url: avatarUrl, updated_at: new Date().toISOString() } : u
+    );
+    
+    const saved = localStorage.getItem('users');
+    let nextId = 3;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        nextId = parsed.nextId || nextId;
+      } catch { /* ignore */ }
+    }
+    
+    localStorage.setItem('users', JSON.stringify({ users: updatedUsers, nextId }));
+    const updated = updatedUsers.find(u => u.id === userId);
+    if (!updated) throw new Error('用户不存在');
+    return updated;
+  }
+
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('users')
+      .update({ avatar_url: avatarUrl, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select()
+      .single();
+    
+    if (error || !data) {
+      throw new Error('头像更新失败');
+    }
+    
+    return data as User;
+  } catch (error) {
+    console.error('更新头像失败:', error);
+    throw error;
+  }
+}
+
+/**
+ * 更新当前用户信息（姓名、电话、邮箱等）
+ */
+export async function updateCurrentUser(userId: number, updates: { name?: string; phone?: string; email?: string }): Promise<User> {
+  const hasSupabase = await isSupabaseAvailable();
+  
+  if (!hasSupabase) {
+    const allUsers = await fetchUsers();
+    const updatedUsers = allUsers.map(u => 
+      u.id === userId ? { ...u, ...updates, updated_at: new Date().toISOString() } : u
+    );
+    
+    const saved = localStorage.getItem('users');
+    let nextId = 3;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        nextId = parsed.nextId || nextId;
+      } catch { /* ignore */ }
+    }
+    
+    localStorage.setItem('users', JSON.stringify({ users: updatedUsers, nextId }));
+    const updated = updatedUsers.find(u => u.id === userId);
+    if (!updated) throw new Error('用户不存在');
+    return updated;
+  }
+
+  try {
+    const client = getSupabaseClient();
+    const { data, error } = await client
+      .from('users')
+      .update({ ...updates, updated_at: new Date().toISOString() })
+      .eq('id', userId)
+      .select()
+      .single();
+    
+    if (error || !data) {
+      throw new Error('信息更新失败');
+    }
+    
+    return data as User;
+  } catch (error) {
+    console.error('更新信息失败:', error);
+    throw error;
+  }
+}

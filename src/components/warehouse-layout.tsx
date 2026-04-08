@@ -31,6 +31,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import UserProfileDialog from '@/components/user-profile-dialog';
 
 const navigation = [
   { name: '库存看板', href: '/', icon: LayoutDashboard },
@@ -60,8 +61,12 @@ export default function WarehouseLayout({ children }: LayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [username, setUsername] = useState('');
+  const [userRole, setUserRole] = useState<number | null>(null);
+  const [userId, setUserId] = useState<number | null>(null);
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [hideSidebar, setHideSidebar] = useState(false);
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
 
   useEffect(() => {
     // 检查登录状态
@@ -69,12 +74,18 @@ export default function WarehouseLayout({ children }: LayoutProps) {
     const user = localStorage.getItem('username') || '';
     setIsLoggedIn(loggedIn);
     
-    // 优先显示真实姓名
+    // 获取当前用户信息
     try {
       const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
       setUsername(currentUser.name || user);
+      setUserRole(currentUser.role_id || null);
+      setUserId(currentUser.id || null);
+      setUserAvatar(currentUser.avatar_url || null);
     } catch {
       setUsername(user);
+      setUserRole(null);
+      setUserId(null);
+      setUserAvatar(null);
     }
 
     // 先用同步缓存，再异步从数据库加载
@@ -110,8 +121,14 @@ export default function WarehouseLayout({ children }: LayoutProps) {
     localStorage.removeItem('currentUser');
     setIsLoggedIn(false);
     setUsername('');
+    setUserRole(null);
+    setUserId(null);
+    setUserAvatar(null);
     router.push('/login');
   };
+
+  // 判断是否为管理员（role_id === 1）
+  const isAdmin = userRole === 1;
 
   // 如果未登录且不在登录页，不渲染内容（避免闪烁）
   if (!isLoggedIn && pathname !== '/login') {
@@ -192,7 +209,8 @@ export default function WarehouseLayout({ children }: LayoutProps) {
             })}
           </nav>
 
-          {/* 底部设置 */}
+          {/* 底部设置 - 仅管理员可见 */}
+          {isAdmin && (
           <div className="border-t border-blue-200 dark:border-gray-700 p-4">
             <Link
               href="/settings"
@@ -208,6 +226,7 @@ export default function WarehouseLayout({ children }: LayoutProps) {
               系统设置
             </Link>
           </div>
+          )}
         </div>
       </aside>
       )}
@@ -253,8 +272,12 @@ export default function WarehouseLayout({ children }: LayoutProps) {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="sm" className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-                    <UserIcon className="h-4 w-4 text-blue-600" />
+                  <div className="w-8 h-8 rounded-full bg-blue-100 overflow-hidden flex items-center justify-center">
+                    {userAvatar ? (
+                      <img src={userAvatar} alt="头像" className="w-full h-full object-cover" />
+                    ) : (
+                      <UserIcon className="h-4 w-4 text-blue-600" />
+                    )}
                   </div>
                   <span className="hidden sm:inline text-sm font-medium">
                     {username || '用户'}
@@ -262,11 +285,21 @@ export default function WarehouseLayout({ children }: LayoutProps) {
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
-                <DropdownMenuLabel>用户信息</DropdownMenuLabel>
+                <DropdownMenuLabel>我的账户</DropdownMenuLabel>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-sm text-gray-600">
+                <DropdownMenuItem
+                  onClick={() => setProfileDialogOpen(true)}
+                  className="cursor-pointer"
+                >
                   <UserIcon className="h-4 w-4 mr-2" />
-                  {username || '用户'}
+                  个人信息
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setProfileDialogOpen(true)}
+                  className="cursor-pointer"
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  修改密码
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem
@@ -296,6 +329,9 @@ export default function WarehouseLayout({ children }: LayoutProps) {
           </p>
         </footer>
       </div>
+
+      {/* 个人中心对话框 */}
+      <UserProfileDialog open={profileDialogOpen} onOpenChange={setProfileDialogOpen} />
     </div>
   );
 }
