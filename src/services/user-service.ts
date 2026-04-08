@@ -1,5 +1,6 @@
 import { getSupabaseClient, getSupabaseCredentials } from '@/storage/database/supabase-client';
 import { createClient } from '@supabase/supabase-js';
+import { getSupabase } from '@/lib/supabase-browser';
 
 export interface User {
   id: number;
@@ -105,58 +106,38 @@ const DEFAULT_USERS: User[] = [
 ];
 
 export async function fetchUsers(): Promise<User[]> {
-  const hasSupabase = await isSupabaseAvailable();
-  
-  if (!hasSupabase) {
-    try {
-      const saved = localStorage.getItem('users');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.users || DEFAULT_USERS;
-      }
-      localStorage.setItem('users', JSON.stringify({ users: DEFAULT_USERS, nextId: 3 }));
-      return DEFAULT_USERS;
-    } catch {
-      return DEFAULT_USERS;
-    }
-  }
-
   try {
-    const client = getSupabaseClient();
-    const { data, error } = await client
+    // 直接使用Supabase浏览器客户端
+    const supabase = getSupabase();
+    const { data, error } = await supabase
       .from('users')
       .select('*')
       .order('username', { ascending: true });
 
     if (error) {
-      console.warn('Supabase fetch failed, falling back to localStorage:', error);
-      try {
-        const saved = localStorage.getItem('users');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          return parsed.users || DEFAULT_USERS;
-        }
-        localStorage.setItem('users', JSON.stringify({ users: DEFAULT_USERS, nextId: 3 }));
-        return DEFAULT_USERS;
-      } catch {
-        return DEFAULT_USERS;
-      }
+      console.error('获取用户失败:', error.message);
+      // 降级到localStorage
+      return getUsersFromLocalStorage();
     }
 
     return (data as User[]) || [];
   } catch (error) {
-    console.warn('Supabase not available, using localStorage:', error);
-    try {
-      const saved = localStorage.getItem('users');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return parsed.users || DEFAULT_USERS;
-      }
-      localStorage.setItem('users', JSON.stringify({ users: DEFAULT_USERS, nextId: 3 }));
-      return DEFAULT_USERS;
-    } catch {
-      return DEFAULT_USERS;
+    console.error('获取用户异常:', error);
+    return getUsersFromLocalStorage();
+  }
+}
+
+// localStorage降级
+function getUsersFromLocalStorage(): User[] {
+  try {
+    const saved = localStorage.getItem('users');
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return parsed.users || DEFAULT_USERS;
     }
+    return DEFAULT_USERS;
+  } catch {
+    return DEFAULT_USERS;
   }
 }
 
