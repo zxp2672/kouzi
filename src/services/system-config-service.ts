@@ -1,4 +1,4 @@
-import { getSupabaseClient, getSupabaseCredentials } from '@/storage/database/supabase-client';
+import { query } from '@/lib/postgres';
 
 export interface SystemConfigMap {
   unit_name: string;
@@ -15,38 +15,15 @@ const DEFAULT_CONFIGS: SystemConfigMap = {
   copyright_text: '© 2024 XX市公安局 版权所有',
 };
 
-async function isSupabaseAvailable(): Promise<boolean> {
-  try {
-    const { url } = getSupabaseCredentials();
-    return url !== 'https://mock.supabase.co';
-  } catch {
-    return false;
-  }
-}
-
 /**
  * 获取所有系统配置
  */
 export async function fetchSystemConfigs(): Promise<SystemConfigMap> {
-  const hasSupabase = await isSupabaseAvailable();
-
-  if (!hasSupabase) {
-    return getConfigsFromLocalStorage();
-  }
-
   try {
-    const client = getSupabaseClient();
-    const { data, error } = await client
-      .from('system_configs')
-      .select('config_key, config_value');
-
-    if (error || !data || data.length === 0) {
-      console.warn('Supabase 获取系统配置失败，降级 localStorage:', error);
-      return getConfigsFromLocalStorage();
-    }
-
+    const result = await query('SELECT config_key, config_value FROM system_configs');
+    
     const configMap: SystemConfigMap = { ...DEFAULT_CONFIGS };
-    for (const row of data) {
+    for (const row of result.rows) {
       configMap[row.config_key] = row.config_value || DEFAULT_CONFIGS[row.config_key] || '';
     }
 
@@ -57,7 +34,7 @@ export async function fetchSystemConfigs(): Promise<SystemConfigMap> {
 
     return configMap;
   } catch (error) {
-    console.warn('Supabase 不可用，使用 localStorage:', error);
+    console.warn('PostgreSQL 获取系统配置失败，使用 localStorage:', error);
     return getConfigsFromLocalStorage();
   }
 }
@@ -66,42 +43,28 @@ export async function fetchSystemConfigs(): Promise<SystemConfigMap> {
  * 保存系统配置
  */
 export async function saveSystemConfigs(configs: SystemConfigMap): Promise<boolean> {
-  const hasSupabase = await isSupabaseAvailable();
-
   // 始终同步到 localStorage（作为缓存和降级方案）
   try {
     localStorage.setItem('system_configs', JSON.stringify(configs));
   } catch { /* ignore */ }
 
-  if (!hasSupabase) {
-    return true;
-  }
-
   try {
-    const client = getSupabaseClient();
     const now = new Date().toISOString();
 
     // 逐项 upsert
     for (const [key, value] of Object.entries(configs)) {
-      const { error } = await client
-        .from('system_configs')
-        .upsert(
-          {
-            config_key: key,
-            config_value: value,
-            updated_at: now,
-          },
-          { onConflict: 'config_key' }
-        );
-
-      if (error) {
-        console.warn(`保存配置 ${key} 失败:`, error);
-      }
+      await query(
+        `INSERT INTO system_configs (config_key, config_value, updated_at) 
+         VALUES ($1, $2, $3) 
+         ON CONFLICT (config_key) 
+         DO UPDATE SET config_value = $2, updated_at = $3`,
+        [key, value, now]
+      );
     }
 
     return true;
   } catch (error) {
-    console.error('Supabase 保存系统配置失败:', error);
+    console.error('PostgreSQL 保存系统配置失败:', error);
     return true; // localStorage 已保存，返回成功
   }
 }
