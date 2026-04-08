@@ -1,3 +1,5 @@
+import { getSupabase } from '@/lib/supabase-browser';
+
 export interface SystemConfigMap {
   unit_name: string;
   unit_logo_url: string;
@@ -18,24 +20,32 @@ const DEFAULT_CONFIGS: SystemConfigMap = {
  */
 export async function fetchSystemConfigs(): Promise<SystemConfigMap> {
   try {
-    const response = await fetch('/api/system-config');
-    const data = await response.json();
+    const supabase = getSupabase();
+    const { data, error } = await supabase
+      .from('system_configs')
+      .select('config_key, config_value');
 
-    if (data.success && data.configs) {
-      const configMap: SystemConfigMap = { ...DEFAULT_CONFIGS, ...data.configs };
-
-      // 同步到 localStorage 作为缓存
-      try {
-        localStorage.setItem('system_configs', JSON.stringify(configMap));
-      } catch { /* ignore */ }
-
-      return configMap;
+    if (error) {
+      console.error('获取系统配置失败:', error.message);
+      return getConfigsFromLocalStorage();
     }
 
-    // API失败，使用localStorage
-    return getConfigsFromLocalStorage();
+    // 转换为键值对
+    const configMap: SystemConfigMap = { ...DEFAULT_CONFIGS };
+    if (data) {
+      for (const row of data) {
+        configMap[row.config_key] = row.config_value || '';
+      }
+    }
+
+    // 同步到 localStorage
+    try {
+      localStorage.setItem('system_configs', JSON.stringify(configMap));
+    } catch { /* ignore */ }
+
+    return configMap;
   } catch (error) {
-    console.warn('获取系统配置失败，使用 localStorage:', error);
+    console.warn('获取系统配置异常，使用 localStorage:', error);
     return getConfigsFromLocalStorage();
   }
 }
