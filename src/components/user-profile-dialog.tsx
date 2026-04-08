@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { User, Camera, Lock, Save, X } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { User, Camera, Lock, Save, X, Upload } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -38,6 +38,8 @@ export default function UserProfileDialog({ open, onOpenChange }: UserProfileDia
   // Avatar form
   const [avatarUrl, setAvatarUrl] = useState('');
   const [updatingAvatar, setUpdatingAvatar] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // Password form
   const [passwordForm, setPasswordForm] = useState({
@@ -104,6 +106,39 @@ export default function UserProfileDialog({ open, onOpenChange }: UserProfileDia
     } finally {
       setUpdatingAvatar(false);
     }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('请选择图片文件');
+      return;
+    }
+
+    // Validate file size (max 2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('图片大小不能超过2MB');
+      return;
+    }
+
+    // Convert to Base64
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64String = event.target?.result as string;
+      setAvatarUrl(base64String);
+      setImagePreview(base64String);
+    };
+    reader.onerror = () => {
+      toast.error('图片读取失败');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
   };
 
   const handleChangePassword = async () => {
@@ -192,24 +227,52 @@ export default function UserProfileDialog({ open, onOpenChange }: UserProfileDia
 
           <TabsContent value="avatar" className="space-y-4 pt-4">
             <div className="flex flex-col items-center space-y-4">
-              <Avatar className="w-24 h-24">
-                <AvatarImage src={avatarUrl || undefined} />
-                <AvatarFallback className="text-2xl">
-                  <User className="w-12 h-12" />
-                </AvatarFallback>
-              </Avatar>
+              <div className="relative group">
+                <Avatar className="w-24 h-24 cursor-pointer" onClick={triggerFileInput}>
+                  <AvatarImage src={imagePreview || avatarUrl || undefined} />
+                  <AvatarFallback className="text-2xl">
+                    <User className="w-12 h-12" />
+                  </AvatarFallback>
+                </Avatar>
+                <div className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer" onClick={triggerFileInput}>
+                  <Camera className="w-8 h-8 text-white" />
+                </div>
+              </div>
+              
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+
               <div className="w-full space-y-2">
-                <Label htmlFor="avatar-url">头像URL</Label>
+                <Label>选择头像</Label>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={triggerFileInput} className="flex-1">
+                    <Upload className="mr-2 h-4 w-4" />
+                    选择图片
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  支持 JPG、PNG、GIF 格式，大小不超过 2MB
+                </p>
+              </div>
+
+              <div className="w-full space-y-2">
+                <Label htmlFor="avatar-url">或输入图片URL</Label>
                 <Input
                   id="avatar-url"
                   value={avatarUrl}
-                  onChange={(e) => setAvatarUrl(e.target.value)}
+                  onChange={(e) => {
+                    setAvatarUrl(e.target.value);
+                    setImagePreview('');
+                  }}
                   placeholder="请输入头像图片链接"
                 />
-                <p className="text-xs text-muted-foreground">
-                  提示：可以上传图片URL或使用在线图片链接
-                </p>
               </div>
+
               <DialogFooter>
                 <Button onClick={handleUpdateAvatar} disabled={updatingAvatar || !avatarUrl}>
                   <Camera className="mr-2 h-4 w-4" />
