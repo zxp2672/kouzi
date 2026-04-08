@@ -1,4 +1,5 @@
 import { getSupabaseClient, getSupabaseCredentials } from '@/storage/database/supabase-client';
+import { getSupabase } from '@/lib/supabase-browser';
 
 export interface Warehouse {
   id: number;
@@ -60,58 +61,31 @@ async function isSupabaseAvailable(): Promise<boolean> {
 }
 
 export async function fetchWarehouses(): Promise<Warehouse[]> {
-  const hasSupabase = await isSupabaseAvailable();
-  
-  if (!hasSupabase) {
-    // Fallback to localStorage
-    try {
-      const saved = localStorage.getItem('warehouses');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-      localStorage.setItem('warehouses', JSON.stringify(mockWarehouses));
-      return mockWarehouses;
-    } catch {
-      return mockWarehouses;
-    }
-  }
-
   try {
-    const client = getSupabaseClient();
-    const { data, error } = await client
+    const supabase = getSupabase();
+    const { data, error } = await supabase
       .from('warehouses')
       .select('*')
       .order('code', { ascending: true });
 
     if (error) {
-      console.warn('Supabase fetch failed, falling back to localStorage:', error);
-      // Fallback to localStorage
-      try {
-        const saved = localStorage.getItem('warehouses');
-        if (saved) {
-          return JSON.parse(saved);
-        }
-        localStorage.setItem('warehouses', JSON.stringify(mockWarehouses));
-        return mockWarehouses;
-      } catch {
-        return mockWarehouses;
-      }
+      console.error('获取仓库失败:', error.message);
+      return getWarehousesFromLocalStorage();
     }
 
     return (data as Warehouse[]) || [];
   } catch (error) {
-    console.warn('Supabase not available, using localStorage:', error);
-    // Fallback to localStorage
-    try {
-      const saved = localStorage.getItem('warehouses');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-      localStorage.setItem('warehouses', JSON.stringify(mockWarehouses));
-      return mockWarehouses;
-    } catch {
-      return mockWarehouses;
-    }
+    console.error('获取仓库异常:', error);
+    return getWarehousesFromLocalStorage();
+  }
+}
+
+function getWarehousesFromLocalStorage(): Warehouse[] {
+  try {
+    const saved = localStorage.getItem('warehouses');
+    return saved ? JSON.parse(saved) : mockWarehouses;
+  } catch {
+    return mockWarehouses;
   }
 }
 

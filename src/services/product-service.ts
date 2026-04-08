@@ -1,4 +1,5 @@
 import { getSupabaseClient, getSupabaseCredentials } from '@/storage/database/supabase-client';
+import { getSupabase } from '@/lib/supabase-browser';
 
 export interface Product {
   id: number;
@@ -92,58 +93,31 @@ async function isSupabaseAvailable(): Promise<boolean> {
 }
 
 export async function fetchProducts(): Promise<Product[]> {
-  const hasSupabase = await isSupabaseAvailable();
-  
-  if (!hasSupabase) {
-    // Fallback to localStorage
-    try {
-      const saved = localStorage.getItem('products');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-      localStorage.setItem('products', JSON.stringify(mockProducts));
-      return mockProducts;
-    } catch {
-      return mockProducts;
-    }
-  }
-
   try {
-    const client = getSupabaseClient();
-    const { data, error } = await client
+    const supabase = getSupabase();
+    const { data, error } = await supabase
       .from('products')
       .select('*')
       .order('code', { ascending: true });
 
     if (error) {
-      console.warn('Supabase fetch failed, falling back to localStorage:', error);
-      // Fallback to localStorage
-      try {
-        const saved = localStorage.getItem('products');
-        if (saved) {
-          return JSON.parse(saved);
-        }
-        localStorage.setItem('products', JSON.stringify(mockProducts));
-        return mockProducts;
-      } catch {
-        return mockProducts;
-      }
+      console.error('获取商品失败:', error.message);
+      return getProductsFromLocalStorage();
     }
 
     return (data as Product[]) || [];
   } catch (error) {
-    console.warn('Supabase not available, using localStorage:', error);
-    // Fallback to localStorage
-    try {
-      const saved = localStorage.getItem('products');
-      if (saved) {
-        return JSON.parse(saved);
-      }
-      localStorage.setItem('products', JSON.stringify(mockProducts));
-      return mockProducts;
-    } catch {
-      return mockProducts;
-    }
+    console.error('获取商品异常:', error);
+    return getProductsFromLocalStorage();
+  }
+}
+
+function getProductsFromLocalStorage(): Product[] {
+  try {
+    const saved = localStorage.getItem('products');
+    return saved ? JSON.parse(saved) : mockProducts;
+  } catch {
+    return mockProducts;
   }
 }
 
