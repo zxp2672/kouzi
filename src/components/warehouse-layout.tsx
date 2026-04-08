@@ -40,9 +40,11 @@ const navigation = [
   { name: '出库管理', href: '/outbound', icon: ArrowUpFromLine },
   { name: '库存盘点', href: '/stock-count', icon: ClipboardCheck },
   { name: '库存调拨', href: '/transfer', icon: ArrowLeftRight },
-  { name: '审核中心', href: '/approvals', icon: FileCheck },
   { name: '统计报表', href: '/reports', icon: BarChart3 },
 ];
+
+// 需要审核权限的导航项
+const approvalNavigation = { name: '审核中心', href: '/approvals', icon: FileCheck };
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -129,6 +131,7 @@ export default function WarehouseLayout({ children }: LayoutProps) {
 
   // 判断是否为管理员（role_id === 1）
   const isAdmin = userRole === 1;
+  const hasApprovalPermission = userRole === 1 || userRole === 2;
 
   // 如果未登录且不在登录页，不渲染内容（避免闪烁）
   if (!isLoggedIn && pathname !== '/login') {
@@ -207,6 +210,24 @@ export default function WarehouseLayout({ children }: LayoutProps) {
                 </Link>
               );
             })}
+            
+            {/* 审核中心 - 仅管理员和库房管理员可见 */}
+            {hasApprovalPermission && (
+              <Link
+                key={approvalNavigation.name}
+                href={approvalNavigation.href}
+                className={cn(
+                  'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-all duration-200',
+                  pathname === approvalNavigation.href
+                    ? 'bg-blue-600 text-white shadow-md'
+                    : 'text-gray-700 hover:bg-blue-50 hover:text-blue-700 dark:text-gray-300 dark:hover:bg-gray-700'
+                )}
+                onClick={() => setSidebarOpen(false)}
+              >
+                <approvalNavigation.icon className="h-5 w-5" />
+                {approvalNavigation.name}
+              </Link>
+            )}
           </nav>
 
           {/* 底部设置 - 仅管理员可见 */}

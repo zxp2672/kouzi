@@ -55,9 +55,23 @@ export default function ApprovalsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
   const [selectedApproval, setSelectedApproval] = useState<ApprovalItem | null>(null);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   
   // 使用审核待办 hook
   const { refresh: refreshApprovalTodo } = useApprovalTodo();
+
+  useEffect(() => {
+    // 获取当前用户信息
+    try {
+      const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      setCurrentUser(user);
+    } catch {
+      setCurrentUser(null);
+    }
+  }, []);
+
+  // 检查是否有审核权限（管理员和库房管理员有审核权限）
+  const hasApprovalPermission = currentUser?.role_id === 1 || currentUser?.role_id === 2;
 
   const fetchApprovals = useCallback(async () => {
     setLoading(true);
@@ -314,14 +328,18 @@ export default function ApprovalsPage() {
                             <Eye className="h-4 w-4 mr-1" />
                             查看
                           </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleApprove(item)}>
-                            <Check className="h-4 w-4 mr-1 text-green-500" />
-                            通过
-                          </Button>
-                          <Button variant="ghost" size="sm" onClick={() => handleReject(item)}>
-                            <X className="h-4 w-4 mr-1 text-red-500" />
-                            拒绝
-                          </Button>
+                          {hasApprovalPermission && (
+                            <>
+                              <Button variant="ghost" size="sm" onClick={() => handleApprove(item)}>
+                                <Check className="h-4 w-4 mr-1 text-green-500" />
+                                通过
+                              </Button>
+                              <Button variant="ghost" size="sm" onClick={() => handleReject(item)}>
+                                <X className="h-4 w-4 mr-1 text-red-500" />
+                                拒绝
+                              </Button>
+                            </>
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
