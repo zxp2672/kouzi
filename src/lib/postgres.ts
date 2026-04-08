@@ -1,32 +1,39 @@
 import { Pool, PoolConfig } from 'pg';
 
-// 数据库连接配置
-const poolConfig: PoolConfig = {
-  host: process.env.DB_HOST || 'cd-postgres-gu24c63s.sql.tencentcdb.com',
-  port: parseInt(process.env.DB_PORT || '21021'),
-  database: process.env.DB_NAME || 'warehouse_db',
-  user: process.env.DB_USER || 'zxp2672',
-  password: process.env.DB_PASSWORD || 'Swj121648.',
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 10000,
-};
+let pool: any = null;
 
-const pool = new Pool(poolConfig);
+function getPool() {
+  if (!pool) {
+    // 数据库连接配置
+    const poolConfig: PoolConfig = {
+      host: process.env.DB_HOST || 'cd-postgres-gu24c63s.sql.tencentcdb.com',
+      port: parseInt(process.env.DB_PORT || '21021'),
+      database: process.env.DB_NAME || 'warehouse_db',
+      user: process.env.DB_USER || 'zxp2672',
+      password: process.env.DB_PASSWORD || 'Swj121648.',
+      max: 20,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+    };
 
-pool.on('connect', () => {
-  console.log('✅ PostgreSQL数据库连接成功');
-});
+    pool = new Pool(poolConfig);
 
-pool.on('error', (err) => {
-  console.error('❌ PostgreSQL数据库连接错误:', err);
-});
+    pool.on('connect', () => {
+      console.log('✅ PostgreSQL数据库连接成功');
+    });
+
+    pool.on('error', (err: Error) => {
+      console.error('❌ PostgreSQL数据库连接错误:', err);
+    });
+  }
+  return pool;
+}
 
 // 查询辅助函数
 export async function query(text: string, params?: any[]) {
   const start = Date.now();
   try {
-    const res = await pool.query(text, params);
+    const res = await getPool().query(text, params);
     const duration = Date.now() - start;
     console.log(`SQL查询: ${duration}ms`, { text: text.substring(0, 100), rows: res.rowCount });
     return res;
@@ -37,12 +44,14 @@ export async function query(text: string, params?: any[]) {
 }
 
 export async function getClient() {
-  return await pool.connect();
+  return await getPool().connect();
 }
 
 export async function closePool() {
-  await pool.end();
+  if (pool) {
+    await pool.end();
+  }
 }
 
-export { pool };
-export default pool;
+export { getPool as pool };
+export default getPool;
