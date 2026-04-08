@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
-import { loginUser, initDefaultUsers } from '@/services/user-service';
+import { initDefaultUsers } from '@/services/user-service';
 import { fetchSystemConfigs, getSystemConfigSync } from '@/services/system-config-service';
 
 const DEFAULT_CONFIG = {
@@ -45,10 +45,21 @@ export default function LoginPage() {
     setError('');
 
     try {
-      // 真实登录验证
-      const user = await loginUser(formData.username, formData.password);
-      
-      if (user) {
+      // 调用登录API进行验证
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: formData.username,
+          password: formData.password
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        const user = data.user;
+        
         // 保存登录状态到 localStorage
         localStorage.setItem('isLoggedIn', 'true');
         localStorage.setItem('username', user.username);
@@ -67,9 +78,10 @@ export default function LoginPage() {
         // 跳转到首页
         router.push('/');
       } else {
-        setError('用户名或密码错误');
+        setError(data.error || '用户名或密码错误');
       }
     } catch (err) {
+      console.error('登录错误:', err);
       setError('登录失败，请重试');
     } finally {
       setLoading(false);
