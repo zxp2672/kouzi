@@ -101,16 +101,31 @@ export default function OutboundPage() {
   const [selectedProduct, setSelectedProduct] = useState('');
   const [itemQuantity, setItemQuantity] = useState('');
   const [itemPrice, setItemPrice] = useState('');
+  const [currentUser, setCurrentUser] = useState<any>(null);
   
   // 使用审核待办 hook
   const { refresh: refreshApprovalTodo } = useApprovalTodo();
 
   useEffect(() => {
+    // 获取当前用户信息
+    try {
+      const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+      setCurrentUser(user);
+    } catch {
+      setCurrentUser(null);
+    }
+    
     fetchOrdersData();
-    fetchWarehousesData();
     fetchProductsData();
-    fetchInventoryData('1');
   }, []);
+
+  // 当用户信息加载完成后，重新获取仓库列表
+  useEffect(() => {
+    if (currentUser !== null) {
+      fetchWarehousesData();
+      fetchInventoryData('1');
+    }
+  }, [currentUser]);
 
   const fetchOrdersData = async () => {
     try {
@@ -126,7 +141,13 @@ export default function OutboundPage() {
   const fetchWarehousesData = async () => {
     try {
       const data = await fetchWarehouses();
-      setWarehouses(data.map(w => ({ id: w.id, code: w.code, name: w.name })));
+      // 根据用户组织ID过滤仓库（管理员可以看到所有仓库）
+      const isAdmin = currentUser?.role_id === 1;
+      const filteredWarehouses = isAdmin 
+        ? data 
+        : data.filter(w => w.organization_id === currentUser?.organization_id || !w.organization_id);
+      
+      setWarehouses(filteredWarehouses.map(w => ({ id: w.id, code: w.code, name: w.name })));
     } catch (error) {
       console.error('获取仓库列表失败:', error);
     }
