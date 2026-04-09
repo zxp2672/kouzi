@@ -4,13 +4,13 @@ let pool: any = null;
 
 function getPool() {
   if (!pool) {
-    // 数据库连接配置
+    // 数据库连接配置（默认使用本地PostgreSQL）
     const poolConfig: PoolConfig = {
-      host: process.env.DB_HOST || 'cd-postgres-gu24c63s.sql.tencentcdb.com',
-      port: parseInt(process.env.DB_PORT || '21021'),
-      database: process.env.DB_NAME || 'warehouse_db',
-      user: process.env.DB_USER || 'zxp2672',
-      password: process.env.DB_PASSWORD || 'Swj121648.',
+      host: process.env.DB_HOST || 'localhost',
+      port: parseInt(process.env.DB_PORT || '5432'),
+      database: process.env.DB_NAME || 'warehouse',
+      user: process.env.DB_USER || 'postgres',
+      password: process.env.DB_PASSWORD || 'postgres',
       max: 20,
       idleTimeoutMillis: 30000,
       connectionTimeoutMillis: 10000,
