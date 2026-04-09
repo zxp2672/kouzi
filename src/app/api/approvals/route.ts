@@ -25,7 +25,7 @@ export async function GET(request: Request) {
       query(`SELECT io.*, w.name as warehouse_name FROM inbound_orders io LEFT JOIN warehouses w ON io.warehouse_id = w.id ${statusCondition}`, statusParams),
       query(`SELECT oo.*, w.name as warehouse_name FROM outbound_orders oo LEFT JOIN warehouses w ON oo.warehouse_id = w.id ${statusCondition}`, statusParams),
       query(`SELECT sc.*, w.name as warehouse_name FROM stock_count_orders sc LEFT JOIN warehouses w ON sc.warehouse_id = w.id ${statusCondition}`, statusParams),
-      query(`SELECT to.*, fw.name as from_warehouse_name, tw.name as to_warehouse_name FROM transfer_orders to LEFT JOIN warehouses fw ON to.from_warehouse_id = fw.id LEFT JOIN warehouses tw ON to.to_warehouse_id = tw.id ${statusCondition}`, statusParams),
+      query(`SELECT t2.*, fw.name as from_warehouse_name, tw.name as to_warehouse_name FROM transfer_orders t2 LEFT JOIN warehouses fw ON t2.from_warehouse_id = fw.id LEFT JOIN warehouses tw ON t2.to_warehouse_id = tw.id ${statusCondition}`, statusParams),
     ]);
 
     // 处理入库单

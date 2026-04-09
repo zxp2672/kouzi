@@ -45,13 +45,13 @@ export async function GET(request: Request, { params }: RouteParams) {
         break;
       case 'transfer':
         result = await query(
-          `SELECT to.*, 
+          `SELECT t2.*, 
                   fw.name as from_warehouse_name, 
                   tw.name as to_warehouse_name
-           FROM transfer_orders to 
-           LEFT JOIN warehouses fw ON to.from_warehouse_id = fw.id 
-           LEFT JOIN warehouses tw ON to.to_warehouse_id = tw.id 
-           WHERE to.id = $1`,
+           FROM transfer_orders t2 
+           LEFT JOIN warehouses fw ON t2.from_warehouse_id = fw.id 
+           LEFT JOIN warehouses tw ON t2.to_warehouse_id = tw.id 
+           WHERE t2.id = $1`,
           [id]
         );
         break;
