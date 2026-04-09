@@ -16,8 +16,8 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     const result = await query(
-      'INSERT INTO warehouses (code, name, address, manager, phone, is_active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
-      [body.code, body.name, body.address, body.manager, body.phone, body.is_active ?? true]
+      'INSERT INTO warehouses (code, name, address, manager, phone, organization_id, is_active) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *',
+      [body.code, body.name, body.address || null, body.manager || null, body.phone || null, body.organization_id || null, body.is_active ?? true]
     );
     return NextResponse.json(result.rows[0]);
   } catch (error) {

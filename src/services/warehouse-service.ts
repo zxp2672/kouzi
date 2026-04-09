@@ -24,33 +24,6 @@ export interface WarehouseFormData {
   is_active: boolean;
 }
 
-const mockWarehouses: Warehouse[] = [
-  {
-    id: 1,
-    code: 'WH001',
-    name: '中心仓库',
-    address: '北京市朝阳区建国路88号',
-    manager: '张三',
-    phone: '13800138001',
-    organization_id: null,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: null
-  },
-  {
-    id: 2,
-    code: 'WH002',
-    name: '城东分库',
-    address: '北京市海淀区中关村大街1号',
-    manager: '李四',
-    phone: '13800138002',
-    organization_id: null,
-    is_active: true,
-    created_at: new Date().toISOString(),
-    updated_at: null
-  }
-];
-
 async function isSupabaseAvailable(): Promise<boolean> {
   try {
     const { url } = getSupabaseCredentials();
@@ -62,6 +35,17 @@ async function isSupabaseAvailable(): Promise<boolean> {
 
 export async function fetchWarehouses(): Promise<Warehouse[]> {
   try {
+    // Try PostgreSQL API first
+    const response = await fetch('/api/warehouses');
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (error) {
+    console.warn('PostgreSQL API failed, trying Supabase:', error);
+  }
+
+  // Fallback to Supabase
+  try {
     const supabase = getSupabase();
     const { data, error } = await supabase
       .from('warehouses')
@@ -70,218 +54,154 @@ export async function fetchWarehouses(): Promise<Warehouse[]> {
 
     if (error) {
       console.error('获取仓库失败:', error.message);
-      return getWarehousesFromLocalStorage();
+      return [];
     }
 
     return (data as Warehouse[]) || [];
   } catch (error) {
     console.error('获取仓库异常:', error);
-    return getWarehousesFromLocalStorage();
-  }
-}
-
-function getWarehousesFromLocalStorage(): Warehouse[] {
-  try {
-    const saved = localStorage.getItem('warehouses');
-    return saved ? JSON.parse(saved) : mockWarehouses;
-  } catch {
-    return mockWarehouses;
+    return [];
   }
 }
 
 export async function createWarehouse(warehouse: WarehouseFormData): Promise<Warehouse> {
-  const hasSupabase = await isSupabaseAvailable();
-  
-  if (!hasSupabase) {
-    // Fallback to localStorage
-    const allWarehouses = await fetchWarehouses();
-    const newWarehouse: Warehouse = {
-      ...warehouse,
-      id: Date.now(),
-      address: warehouse.address || null,
-      manager: warehouse.manager || null,
-      phone: warehouse.phone || null,
-      organization_id: warehouse.organization_id ?? null,
-      created_at: new Date().toISOString(),
-      updated_at: null
-    };
-    const updated = [...allWarehouses, newWarehouse];
-    localStorage.setItem('warehouses', JSON.stringify(updated));
-    return newWarehouse;
+  try {
+    // Try PostgreSQL API first
+    const response = await fetch('/api/warehouses', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(warehouse),
+    });
+    
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (error) {
+    console.warn('PostgreSQL API failed, trying Supabase:', error);
   }
 
-  try {
-    const client = getSupabaseClient();
-    const now = new Date().toISOString();
-    const warehouseToInsert = {
-      ...warehouse,
-      address: warehouse.address || null,
-      manager: warehouse.manager || null,
-      phone: warehouse.phone || null,
-      organization_id: warehouse.organization_id ?? null,
-      created_at: now,
-      updated_at: now
-    };
-
-    const { data, error } = await client
-      .from('warehouses')
-      .insert(warehouseToInsert)
-      .select()
-      .single();
-
-    if (error) {
-      console.warn('Supabase create failed, falling back to localStorage:', error);
-      // Fallback to localStorage
-      const allWarehouses = await fetchWarehouses();
-      const newWarehouse: Warehouse = {
+  // Fallback to Supabase
+  const hasSupabase = await isSupabaseAvailable();
+  
+  if (hasSupabase) {
+    try {
+      const client = getSupabaseClient();
+      const now = new Date().toISOString();
+      const warehouseToInsert = {
         ...warehouse,
-        id: Date.now(),
         address: warehouse.address || null,
         manager: warehouse.manager || null,
         phone: warehouse.phone || null,
         organization_id: warehouse.organization_id ?? null,
-        created_at: new Date().toISOString(),
-        updated_at: null
+        created_at: now,
+        updated_at: now
       };
-      const updated = [...allWarehouses, newWarehouse];
-      localStorage.setItem('warehouses', JSON.stringify(updated));
-      return newWarehouse;
-    }
 
-    return data as Warehouse;
-  } catch (error) {
-    console.warn('Supabase not available, using localStorage:', error);
-    // Fallback to localStorage
-    const allWarehouses = await fetchWarehouses();
-    const newWarehouse: Warehouse = {
-      ...warehouse,
-      id: Date.now(),
-      address: warehouse.address || null,
-      manager: warehouse.manager || null,
-      phone: warehouse.phone || null,
-      organization_id: warehouse.organization_id ?? null,
-      created_at: new Date().toISOString(),
-      updated_at: null
-    };
-    const updated = [...allWarehouses, newWarehouse];
-    localStorage.setItem('warehouses', JSON.stringify(updated));
-    return newWarehouse;
+      const { data, error } = await client
+        .from('warehouses')
+        .insert(warehouseToInsert)
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      return data as Warehouse;
+    } catch (error) {
+      console.error('Supabase create failed:', error);
+      throw error;
+    }
   }
+
+  throw new Error('No database available');
 }
 
 export async function updateWarehouse(id: number, warehouse: WarehouseFormData): Promise<Warehouse> {
+  try {
+    // Try PostgreSQL API first
+    const response = await fetch(`/api/warehouses/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(warehouse),
+    });
+    
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (error) {
+    console.warn('PostgreSQL API failed, trying Supabase:', error);
+  }
+
+  // Fallback to Supabase
   const hasSupabase = await isSupabaseAvailable();
   
-  if (!hasSupabase) {
-    // Fallback to localStorage
-    const allWarehouses = await fetchWarehouses();
-    const updatedWarehouses = allWarehouses.map(w => 
-      w.id === id ? { 
-        ...w, 
-        ...warehouse, 
+  if (hasSupabase) {
+    try {
+      const client = getSupabaseClient();
+      const now = new Date().toISOString();
+      const warehouseToUpdate = {
+        ...warehouse,
         address: warehouse.address || null,
         manager: warehouse.manager || null,
         phone: warehouse.phone || null,
-        updated_at: new Date().toISOString()
-      } : w
-    );
-    localStorage.setItem('warehouses', JSON.stringify(updatedWarehouses));
-    const updated = updatedWarehouses.find(w => w.id === id);
-    if (!updated) throw new Error('Warehouse not found');
-    return updated;
-  }
+        updated_at: now
+      };
 
-  try {
-    const client = getSupabaseClient();
-    const now = new Date().toISOString();
-    const warehouseToUpdate = {
-      ...warehouse,
-      address: warehouse.address || null,
-      manager: warehouse.manager || null,
-      phone: warehouse.phone || null,
-      updated_at: now
-    };
+      const { data, error } = await client
+        .from('warehouses')
+        .update(warehouseToUpdate)
+        .eq('id', id)
+        .select()
+        .single();
 
-    const { data, error } = await client
-      .from('warehouses')
-      .update(warehouseToUpdate)
-      .eq('id', id)
-      .select()
-      .single();
+      if (error) {
+        throw error;
+      }
 
-    if (error) {
-      console.warn('Supabase update failed, falling back to localStorage:', error);
-      // Fallback to localStorage
-      const allWarehouses = await fetchWarehouses();
-      const updatedWarehouses = allWarehouses.map(w => 
-        w.id === id ? { 
-          ...w, 
-          ...warehouse, 
-          address: warehouse.address || null,
-          manager: warehouse.manager || null,
-          phone: warehouse.phone || null,
-          updated_at: new Date().toISOString()
-        } : w
-      );
-      localStorage.setItem('warehouses', JSON.stringify(updatedWarehouses));
-      const updated = updatedWarehouses.find(w => w.id === id);
-      if (!updated) throw new Error('Warehouse not found');
-      return updated;
+      return data as Warehouse;
+    } catch (error) {
+      console.error('Supabase update failed:', error);
+      throw error;
     }
-
-    return data as Warehouse;
-  } catch (error) {
-    console.warn('Supabase not available, using localStorage:', error);
-    // Fallback to localStorage
-    const allWarehouses = await fetchWarehouses();
-    const updatedWarehouses = allWarehouses.map(w => 
-      w.id === id ? { 
-        ...w, 
-        ...warehouse, 
-        address: warehouse.address || null,
-        manager: warehouse.manager || null,
-        phone: warehouse.phone || null,
-        updated_at: new Date().toISOString()
-      } : w
-    );
-    localStorage.setItem('warehouses', JSON.stringify(updatedWarehouses));
-    const updated = updatedWarehouses.find(w => w.id === id);
-    if (!updated) throw new Error('Warehouse not found');
-    return updated;
   }
+
+  throw new Error('No database available');
 }
 
 export async function deleteWarehouse(id: number): Promise<void> {
-  const hasSupabase = await isSupabaseAvailable();
-  
-  if (!hasSupabase) {
-    // Fallback to localStorage
-    const allWarehouses = await fetchWarehouses();
-    const updated = allWarehouses.filter(w => w.id !== id);
-    localStorage.setItem('warehouses', JSON.stringify(updated));
-    return;
-  }
-
   try {
-    const client = getSupabaseClient();
-    const { error } = await client
-      .from('warehouses')
-      .delete()
-      .eq('id', id);
-
-    if (error) {
-      console.warn('Supabase delete failed, falling back to localStorage:', error);
-      // Fallback to localStorage
-      const allWarehouses = await fetchWarehouses();
-      const updated = allWarehouses.filter(w => w.id !== id);
-      localStorage.setItem('warehouses', JSON.stringify(updated));
+    // Try PostgreSQL API first
+    const response = await fetch(`/api/warehouses/${id}`, {
+      method: 'DELETE',
+    });
+    
+    if (response.ok) {
       return;
     }
   } catch (error) {
-    console.warn('Supabase not available, using localStorage:', error);
-    // Fallback to localStorage
-    const allWarehouses = await fetchWarehouses();
-    const updated = allWarehouses.filter(w => w.id !== id);
-    localStorage.setItem('warehouses', JSON.stringify(updated));
+    console.warn('PostgreSQL API failed, trying Supabase:', error);
   }
+
+  // Fallback to Supabase
+  const hasSupabase = await isSupabaseAvailable();
+  
+  if (hasSupabase) {
+    try {
+      const client = getSupabaseClient();
+      const { error } = await client
+        .from('warehouses')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        throw error;
+      }
+    } catch (error) {
+      console.error('Supabase delete failed:', error);
+      throw error;
+    }
+  }
+
+  throw new Error('No database available');
 }
