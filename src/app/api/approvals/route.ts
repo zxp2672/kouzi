@@ -1,48 +1,39 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { query } from '@/lib/postgres';
 
 // 获取所有审核相关的单据（入库、出库、盘点、调拨）
 export async function GET(request: Request) {
   try {
-    const client = getSupabaseClient();
-    
     // 获取URL参数，支持按状态过滤
     const url = new URL(request.url);
-    const statusFilter = url.searchParams.get('status'); // 'pending', 'approved', 'rejected', or null for all
+    const statusFilter = url.searchParams.get('status');
     
-    // 根据过滤条件构建查询
-    let statusCondition: string[] | undefined;
+    // 构建状态条件
+    let statusCondition = '';
+    let statusParams: any[] = [];
+    
     if (statusFilter === 'pending') {
-      statusCondition = ['pending'];
+      statusCondition = "WHERE status = 'pending'";
     } else if (statusFilter === 'approved') {
-      statusCondition = ['approved', 'completed'];
+      statusCondition = "WHERE status IN ('approved', 'completed')";
     } else if (statusFilter === 'rejected') {
-      statusCondition = ['rejected'];
+      statusCondition = "WHERE status = 'rejected'";
     }
-    // 如果不传status参数，返回所有状态
-    
-    const baseSelect = '*, warehouses(name)';
+
+    // 并行查询所有单据
     const [inboundRes, outboundRes, stockCountRes, transferRes] = await Promise.all([
-      statusCondition 
-        ? client.from('inbound_orders').select(baseSelect).in('status', statusCondition)
-        : client.from('inbound_orders').select(baseSelect),
-      statusCondition
-        ? client.from('outbound_orders').select(baseSelect).in('status', statusCondition)
-        : client.from('outbound_orders').select(baseSelect),
-      statusCondition
-        ? client.from('stock_counts').select(baseSelect).in('status', statusCondition)
-        : client.from('stock_counts').select(baseSelect),
-      statusCondition
-        ? client.from('transfer_orders').select('*, from_warehouse:warehouses!transfer_orders_from_warehouse_id_fkey(name), to_warehouse:warehouses!transfer_orders_to_warehouse_id_fkey(name)').in('status', statusCondition)
-        : client.from('transfer_orders').select('*, from_warehouse:warehouses!transfer_orders_from_warehouse_id_fkey(name), to_warehouse:warehouses!transfer_orders_to_warehouse_id_fkey(name)')
+      query(`SELECT io.*, w.name as warehouse_name FROM inbound_orders io LEFT JOIN warehouses w ON io.warehouse_id = w.id ${statusCondition}`, statusParams),
+      query(`SELECT oo.*, w.name as warehouse_name FROM outbound_orders oo LEFT JOIN warehouses w ON oo.warehouse_id = w.id ${statusCondition}`, statusParams),
+      query(`SELECT sc.*, w.name as warehouse_name FROM stock_count_orders sc LEFT JOIN warehouses w ON sc.warehouse_id = w.id ${statusCondition}`, statusParams),
+      query(`SELECT to.*, fw.name as from_warehouse_name, tw.name as to_warehouse_name FROM transfer_orders to LEFT JOIN warehouses fw ON to.from_warehouse_id = fw.id LEFT JOIN warehouses tw ON to.to_warehouse_id = tw.id ${statusCondition}`, statusParams),
     ]);
 
     // 处理入库单
-    const inboundOrders = (inboundRes.data || []).map((item: any) => ({
+    const inboundOrders = inboundRes.rows.map((item: any) => ({
       id: item.id,
       type: 'inbound' as const,
       order_no: item.order_no,
-      warehouse_name: item.warehouses?.name || '未知仓库',
+      warehouse_name: item.warehouse_name || '未知仓库',
       status: item.status,
       supplier: item.supplier,
       remark: item.remark,
@@ -51,11 +42,11 @@ export async function GET(request: Request) {
     }));
 
     // 处理出库单
-    const outboundOrders = (outboundRes.data || []).map((item: any) => ({
+    const outboundOrders = outboundRes.rows.map((item: any) => ({
       id: item.id,
       type: 'outbound' as const,
       order_no: item.order_no,
-      warehouse_name: item.warehouses?.name || '未知仓库',
+      warehouse_name: item.warehouse_name || '未知仓库',
       status: item.status,
       customer: item.customer,
       remark: item.remark,
@@ -64,11 +55,11 @@ export async function GET(request: Request) {
     }));
 
     // 处理盘点单
-    const stockCounts = (stockCountRes.data || []).map((item: any) => ({
+    const stockCounts = stockCountRes.rows.map((item: any) => ({
       id: item.id,
       type: 'stock_count' as const,
       order_no: item.order_no,
-      warehouse_name: item.warehouses?.name || '未知仓库',
+      warehouse_name: item.warehouse_name || '未知仓库',
       status: item.status,
       remark: item.remark,
       created_by: item.created_by,
@@ -76,13 +67,13 @@ export async function GET(request: Request) {
     }));
 
     // 处理调拨单
-    const transferOrders = (transferRes.data || []).map((item: any) => ({
+    const transferOrders = transferRes.rows.map((item: any) => ({
       id: item.id,
       type: 'transfer' as const,
       order_no: item.order_no,
-      from_warehouse_name: item.from_warehouse?.name || '未知仓库',
-      to_warehouse_name: item.to_warehouse?.name || '未知仓库',
-      warehouse_name: item.from_warehouse?.name || '未知仓库',
+      from_warehouse_name: item.from_warehouse_name || '未知仓库',
+      to_warehouse_name: item.to_warehouse_name || '未知仓库',
+      warehouse_name: item.from_warehouse_name || '未知仓库',
       status: item.status,
       remark: item.remark,
       created_by: item.created_by,
@@ -100,13 +91,6 @@ export async function GET(request: Request) {
     return NextResponse.json(allApprovals);
   } catch (error) {
     console.error('API error:', error);
-    
-    // 如果出错，返回模拟数据
-    const mockApprovals = [
-      { id: 1, type: 'inbound', order_no: 'IN202401002', warehouse_name: '主仓库', status: 'pending', supplier: '劳保用品厂', remark: '补充库存', created_by: '王五', created_at: new Date(Date.now() - 3600000).toISOString() },
-      { id: 2, type: 'outbound', order_no: 'OUT202401002', warehouse_name: '主仓库', status: 'pending', customer: '派出所B', remark: '应急物资', created_by: '王五', created_at: new Date(Date.now() - 7200000).toISOString() },
-      { id: 3, type: 'transfer', order_no: 'TR202401002', from_warehouse_name: '分仓库', to_warehouse_name: '主仓库', warehouse_name: '分仓库', status: 'pending', remark: '退回物资', created_by: '王五', created_at: new Date(Date.now() - 10800000).toISOString() },
-    ];
-    return NextResponse.json(mockApprovals);
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

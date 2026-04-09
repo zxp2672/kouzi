@@ -1,23 +1,17 @@
 
 import { NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { query } from '@/lib/postgres';
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const client = getSupabaseClient();
-    const { data, error } = await client
-      .from('roles')
-      .select('*')
-      .eq('id', parseInt(id))
-      .single();
-
-    if (error) {
-      console.error('Supabase error:', error);
+    const result = await query('SELECT * FROM roles WHERE id = $1', [id]);
+    
+    if (result.rows.length === 0) {
       return NextResponse.json({ error: 'Role not found' }, { status: 404 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(result.rows[0]);
   } catch (error) {
     console.error('API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -28,21 +22,17 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
   try {
     const { id } = await params;
     const body = await request.json();
-    const client = getSupabaseClient();
     
-    const { data, error } = await client
-      .from('roles')
-      .update(body)
-      .eq('id', parseInt(id))
-      .select()
-      .single();
+    const result = await query(
+      'UPDATE roles SET name = $1, description = $2, permissions = $3, is_active = $4 WHERE id = $5 RETURNING *',
+      [body.name, body.description || null, body.permissions ? JSON.stringify(body.permissions) : null, body.is_active ?? true, id]
+    );
 
-    if (error) {
-      console.error('Supabase error:', error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Role not found' }, { status: 404 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(result.rows[0]);
   } catch (error) {
     console.error('API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -52,16 +42,11 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
 export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params;
-    const client = getSupabaseClient();
     
-    const { error } = await client
-      .from('roles')
-      .delete()
-      .eq('id', parseInt(id));
+    const result = await query('DELETE FROM roles WHERE id = $1', [id]);
 
-    if (error) {
-      console.error('Supabase error:', error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (result.rowCount === 0) {
+      return NextResponse.json({ error: 'Role not found' }, { status: 404 });
     }
 
     return NextResponse.json({ success: true });
@@ -70,3 +55,4 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+

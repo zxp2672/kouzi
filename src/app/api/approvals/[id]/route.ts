@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSupabaseClient } from '@/storage/database/supabase-client';
+import { query } from '@/lib/postgres';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -12,57 +12,58 @@ export async function GET(request: Request, { params }: RouteParams) {
     const url = new URL(request.url);
     const type = url.searchParams.get('type');
     
-    const client = getSupabaseClient();
-    
-    let data: any = null;
-    let error: any = null;
+    let result: any = null;
     
     // 根据类型查询不同的表
     switch (type) {
       case 'inbound':
-        const inboundRes = await client
-          .from('inbound_orders')
-          .select('*, warehouses(name), inbound_items(*, products(name, code))')
-          .eq('id', id)
-          .single();
-        data = inboundRes.data;
-        error = inboundRes.error;
+        result = await query(
+          `SELECT io.*, w.name as warehouse_name 
+           FROM inbound_orders io 
+           LEFT JOIN warehouses w ON io.warehouse_id = w.id 
+           WHERE io.id = $1`,
+          [id]
+        );
         break;
       case 'outbound':
-        const outboundRes = await client
-          .from('outbound_orders')
-          .select('*, warehouses(name), outbound_items(*, products(name, code))')
-          .eq('id', id)
-          .single();
-        data = outboundRes.data;
-        error = outboundRes.error;
+        result = await query(
+          `SELECT oo.*, w.name as warehouse_name 
+           FROM outbound_orders oo 
+           LEFT JOIN warehouses w ON oo.warehouse_id = w.id 
+           WHERE oo.id = $1`,
+          [id]
+        );
         break;
       case 'stock_count':
-        const stockCountRes = await client
-          .from('stock_counts')
-          .select('*, warehouses(name), stock_count_items(*, products(name, code))')
-          .eq('id', id)
-          .single();
-        data = stockCountRes.data;
-        error = stockCountRes.error;
+        result = await query(
+          `SELECT sc.*, w.name as warehouse_name 
+           FROM stock_count_orders sc 
+           LEFT JOIN warehouses w ON sc.warehouse_id = w.id 
+           WHERE sc.id = $1`,
+          [id]
+        );
         break;
       case 'transfer':
-        const transferRes = await client
-          .from('transfer_orders')
-          .select('*, from_warehouse:warehouses!transfer_orders_from_warehouse_id_fkey(name), to_warehouse:warehouses!transfer_orders_to_warehouse_id_fkey(name), transfer_items(*, products(name, code))')
-          .eq('id', id)
-          .single();
-        data = transferRes.data;
-        error = transferRes.error;
+        result = await query(
+          `SELECT to.*, 
+                  fw.name as from_warehouse_name, 
+                  tw.name as to_warehouse_name
+           FROM transfer_orders to 
+           LEFT JOIN warehouses fw ON to.from_warehouse_id = fw.id 
+           LEFT JOIN warehouses tw ON to.to_warehouse_id = tw.id 
+           WHERE to.id = $1`,
+          [id]
+        );
         break;
+      default:
+        return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
     }
 
-    if (error) {
-      console.error('Supabase error:', error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Record not found' }, { status: 404 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(result.rows[0]);
   } catch (error) {
     console.error('API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -76,8 +77,6 @@ export async function PATCH(request: Request, { params }: RouteParams) {
     const body = await request.json();
     const { type, status, approved_by } = body;
     
-    const client = getSupabaseClient();
-    
     let tableName = '';
     switch (type) {
       case 'inbound':
@@ -87,7 +86,7 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         tableName = 'outbound_orders';
         break;
       case 'stock_count':
-        tableName = 'stock_counts';
+        tableName = 'stock_count_orders';
         break;
       case 'transfer':
         tableName = 'transfer_orders';
@@ -96,26 +95,19 @@ export async function PATCH(request: Request, { params }: RouteParams) {
         return NextResponse.json({ error: 'Invalid type' }, { status: 400 });
     }
 
-    const updateData: any = {
-      status,
-      approved_by: approved_by || '系统管理员',
-      approved_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    };
+    const result = await query(
+      `UPDATE ${tableName} 
+       SET status = $1, approved_by = $2, approved_at = NOW(), updated_at = NOW() 
+       WHERE id = $3 
+       RETURNING *`,
+      [status, approved_by || '系统管理员', id]
+    );
 
-    const { data, error } = await client
-      .from(tableName)
-      .update(updateData)
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Supabase error:', error);
-      return NextResponse.json({ error: error.message }, { status: 400 });
+    if (result.rows.length === 0) {
+      return NextResponse.json({ error: 'Record not found' }, { status: 404 });
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json(result.rows[0]);
   } catch (error) {
     console.error('API error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
