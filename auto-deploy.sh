@@ -1,321 +1,217 @@
 #!/bin/bash
-# 库房管理系统 - 阿里云自动部署脚本
-# 从GitHub拉取最新代码并自动部署
+# 阿里云CentOS 8 一键部署脚本
+# 使用方法: bash auto-deploy.sh
 
 set -e
 
-echo "========================================"
+echo "========================================="
 echo "  库房管理系统 - 自动部署脚本"
-echo "========================================"
+echo "========================================="
+
+# 检查是否是root
+if [ "$EUID" -ne 0 ]; then 
+    echo "❌ 请使用root用户运行此脚本"
+    echo "执行: su -"
+    exit 1
+fi
+
+# ===== 第1步：修复yum源 =====
 echo ""
+echo "📦 第1步：修复yum源..."
+sed -i 's/mirrorlist/#mirrorlist/g' /etc/yum.repos.d/CentOS-* 2>/dev/null || true
+sed -i 's|#baseurl=http://mirror.centos.org|baseurl=http://vault.centos.org|g' /etc/yum.repos.d/CentOS-* 2>/dev/null || true
+yum clean all
+yum makecache
 
-# 配置变量
-REPO_URL="https://github.com/zxp2672/kouzi.git"
-DEPLOY_DIR="/opt/warehouse-system"
-PROJECT_NAME="kouzi"
+# ===== 第2步：安装系统依赖 =====
+echo ""
+echo "📦 第2步：安装系统依赖..."
+yum update -y
+yum install -y curl git nginx postgresql-server postgresql-contrib
 
-# 颜色输出
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[1;33m'
-NC='\033[0m' # No Color
+# ===== 第3步：安装Node.js 20 =====
+echo ""
+echo "📦 第3步：安装Node.js 20..."
+curl -fsSL https://rpm.nodesource.com/setup_20.x | bash -
+yum install -y nodejs
 
-log_info() {
-    echo -e "${GREEN}[INFO]${NC} $1"
+# ===== 第4步：安装pnpm和PM2 =====
+echo ""
+echo "📦 第4步：安装pnpm和PM2..."
+npm install -g pnpm pm2
+
+# ===== 第5步：初始化数据库 =====
+echo ""
+echo "📦 第5步：初始化PostgreSQL数据库..."
+postgresql-setup --initdb
+systemctl start postgresql
+systemctl enable postgresql
+
+echo "创建数据库和用户..."
+sudo -u postgres psql << 'EOSQL'
+CREATE DATABASE warehouse_db;
+CREATE USER warehouse_user WITH PASSWORD 'Warehouse2024!';
+GRANT ALL PRIVILEGES ON DATABASE warehouse_db TO warehouse_user;
+\c warehouse_db
+GRANT ALL ON SCHEMA public TO warehouse_user;
+
+CREATE TABLE IF NOT EXISTS users (
+    id SERIAL PRIMARY KEY,
+    username VARCHAR(50) UNIQUE NOT NULL,
+    password_hash VARCHAR(255),
+    full_name VARCHAR(100) NOT NULL,
+    email VARCHAR(100) UNIQUE,
+    phone VARCHAR(20),
+    role VARCHAR(50) NOT NULL,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS roles (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(50) UNIQUE NOT NULL,
+    description TEXT,
+    permissions JSONB DEFAULT '[]',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS warehouses (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(50) UNIQUE NOT NULL,
+    address TEXT,
+    contact_person VARCHAR(100),
+    contact_phone VARCHAR(20),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS organizations (
+    id SERIAL PRIMARY KEY,
+    name VARCHAR(100) NOT NULL,
+    code VARCHAR(50) UNIQUE NOT NULL,
+    type VARCHAR(50) DEFAULT 'company',
+    parent_id INTEGER,
+    description TEXT,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS system_configs (
+    id SERIAL PRIMARY KEY,
+    config_key VARCHAR(100) UNIQUE NOT NULL,
+    config_value TEXT,
+    description TEXT,
+    category VARCHAR(50) DEFAULT 'general',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+INSERT INTO roles (name, description, permissions) VALUES 
+    ('admin', '超级管理员', '["*"]') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name, description, permissions) VALUES 
+    ('manager', '仓库管理员', '["read:all","write:inbound","write:outbound","read:stock"]') ON CONFLICT (name) DO NOTHING;
+INSERT INTO roles (name, description, permissions) VALUES 
+    ('user', '普通用户', '["read:basic"]') ON CONFLICT (name) DO NOTHING;
+INSERT INTO users (username, password_hash, full_name, role, is_active) VALUES 
+    ('admin', '8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', '系统管理员', 'admin', true) ON CONFLICT (username) DO NOTHING;
+EOSQL
+
+echo "✅ 数据库配置完成！"
+
+# ===== 第6步：克隆项目 =====
+echo ""
+echo "📦 第6步：克隆项目代码..."
+cd /www/wwwroot 2>/dev/null || mkdir -p /www/wwwroot && cd /www/wwwroot
+rm -rf kouzi 2>/dev/null || true
+
+echo "尝试从GitHub克隆..."
+git clone https://github.com/zxp2672/kouzi.git || {
+    echo "GitHub克隆失败，尝试使用认证信息..."
+    git clone https://zxp2672:swj121648@github.com/zxp2672/kouzi.git --depth 1 || {
+        echo "❌ GitHub克隆失败！请手动上传项目文件"
+        echo "在本地执行: scp -r e:\\ai\\kc6\\kouzi root@47.109.159.143:/www/wwwroot/kouzi"
+        exit 1
+    }
 }
 
-log_warn() {
-    echo -e "${YELLOW}[WARN]${NC} $1"
-}
+cd kouzi
+git config --global --add safe.directory /www/wwwroot/kouzi
 
-log_error() {
-    echo -e "${RED}[ERROR]${NC} $1"
-}
-
-# 检查是否为root用户
-if [[ $EUID -ne 0 ]]; then
-   log_error "此脚本必须以root用户运行"
-   exit 1
-fi
-
-log_info "开始自动部署..."
-
-# ========================================
-# 步骤1: 安装系统依赖
-# ========================================
-log_info "步骤1: 检查和安装系统依赖..."
-
-# 更新包管理器
-apt update
-
-# 安装基础工具
-apt install -y curl wget git
-
-# 安装Node.js 20.x
-if ! command -v node &> /dev/null; then
-    log_info "安装Node.js..."
-    curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-    apt install -y nodejs
-fi
-
-# 安装pnpm
-if ! command -v pnpm &> /dev/null; then
-    log_info "安装pnpm..."
-    npm install -g pnpm
-fi
-
-# 安装Nginx
-if ! command -v nginx &> /dev/null; then
-    log_info "安装Nginx..."
-    apt install -y nginx
-fi
-
-log_info "系统依赖安装完成"
-
-# ========================================
-# 步骤2: 拉取代码
-# ========================================
-log_info "步骤2: 拉取最新代码..."
-
-# 创建部署目录
-mkdir -p $DEPLOY_DIR
-
-# 如果目录不为空，先备份
-if [ -d "$DEPLOY_DIR/$PROJECT_NAME" ]; then
-    log_warn "发现现有部署，创建备份..."
-    mv $DEPLOY_DIR/$PROJECT_NAME $DEPLOY_DIR/${PROJECT_NAME}_backup_$(date +%Y%m%d_%H%M%S)
-fi
-
-# 克隆或更新代码
-cd $DEPLOY_DIR
-if [ ! -d "$PROJECT_NAME" ]; then
-    log_info "克隆仓库..."
-    git clone $REPO_URL $PROJECT_NAME
-else
-    log_info "更新现有代码..."
-    cd $PROJECT_NAME
-    git pull origin main
-    cd ..
-fi
-
-log_info "代码拉取完成"
-
-# ========================================
-# 步骤3: 安装项目依赖
-# ========================================
-log_info "步骤3: 安装项目依赖..."
-
-cd $DEPLOY_DIR/$PROJECT_NAME
-
-# 安装依赖
-pnpm install --frozen-lockfile
-
-log_info "项目依赖安装完成"
-
-# ========================================
-# 步骤4: 配置环境变量
-# ========================================
-log_info "步骤4: 配置环境变量..."
-
-# 检查是否存在.env文件
-if [ ! -f ".env" ]; then
-    log_warn ".env文件不存在，使用默认配置"
-    cat > .env << EOF
-# 生产环境配置
-NODE_ENV=production
-PORT=3000
-
-# Supabase配置
-NEXT_PUBLIC_SUPABASE_URL=https://rcyeqrjalfzczdyspbog.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJjeWVxcmphbGZ6Y3pkeXNwYm9nIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU1NjMxMjEsImV4cCI6MjA5MTEzOTEyMX0.Q-WS3GuGI3VWi61whHt1nAbEHyf-T6o2fBttqYhanD4
-
-# 腾讯云PostgreSQL（如果需要）
-DB_HOST=cd-postgres-gu24c63s.sql.tencentcdb.com
-DB_PORT=21021
-DB_NAME=warehouse_db
-DB_USER=zxp2672
-DB_PASSWORD=Swj121648.
-EOF
-    log_info "已创建默认.env文件"
-fi
-
-log_info "环境变量配置完成"
-
-# ========================================
-# 步骤5: 构建项目
-# ========================================
-log_info "步骤5: 构建项目..."
-
-# 清理旧的构建文件
-rm -rf .next
-
-# 构建项目
+# ===== 第7步：安装依赖并构建 =====
+echo ""
+echo "📦 第7步：安装依赖和构建项目..."
+pnpm install
 pnpm build
 
-log_info "项目构建完成"
-
-# ========================================
-# 步骤6: 创建系统服务
-# ========================================
-log_info "步骤6: 创建系统服务..."
-
-# 创建服务文件
-cat > /etc/systemd/system/warehouse-system.service << EOF
-[Unit]
-Description=Warehouse Management System
-After=network.target
-
-[Service]
-Type=simple
-User=root
-WorkingDirectory=$DEPLOY_DIR/$PROJECT_NAME
-ExecStart=/usr/bin/pnpm start
-Restart=always
-RestartSec=10
-Environment=NODE_ENV=production
-Environment=PORT=3000
-
-[Install]
-WantedBy=multi-user.target
+# ===== 第8步：配置环境变量 =====
+echo ""
+echo "📦 第8步：配置环境变量..."
+cat > .env.local << 'EOF'
+PORT=3000
+DB_HOST=localhost
+DB_PORT=5432
+DB_NAME=warehouse_db
+DB_USER=warehouse_user
+DB_PASSWORD=Warehouse2024!
+NEXT_PUBLIC_SUPABASE_URL=placeholder
+NEXT_PUBLIC_SUPABASE_ANON_KEY=placeholder
+NODE_ENV=production
 EOF
 
-# 重新加载systemd
-systemctl daemon-reload
-
-# 启动服务
-systemctl enable warehouse-system
-systemctl start warehouse-system
-
-log_info "系统服务创建完成"
-
-# ========================================
-# 步骤7: 配置Nginx
-# ========================================
-log_info "步骤7: 配置Nginx反向代理..."
-
-# 创建Nginx配置
-cat > /etc/nginx/sites-available/warehouse-system << EOF
+# ===== 第9步：配置Nginx =====
+echo ""
+echo "📦 第9步：配置Nginx..."
+cat > /etc/nginx/conf.d/warehouse.conf << 'EOF'
 server {
     listen 80;
-    server_name _;
-
-    # 静态文件缓存
-    location /_next/static/ {
-        proxy_pass http://127.0.0.1:3000;
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-    }
-
-    # API路由
-    location /api/ {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
-    }
-
-    # Next.js应用
+    server_name 001tf.com www.001tf.com;
+    large_client_header_buffers 4 32k;
+    
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_cache_bypass \$http_upgrade;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+        proxy_buffer_size 128k;
+        proxy_buffers 4 256k;
+        proxy_busy_buffers_size 256k;
     }
 }
 EOF
 
-# 启用站点
-ln -sf /etc/nginx/sites-available/warehouse-system /etc/nginx/sites-enabled/
-
-# 删除默认站点
-rm -f /etc/nginx/sites-enabled/default
-
-# 测试Nginx配置
-nginx -t
-
-# 重启Nginx
-systemctl restart nginx
 systemctl enable nginx
+systemctl restart nginx
 
-log_info "Nginx配置完成"
-
-# ========================================
-# 步骤8: 配置防火墙
-# ========================================
-log_info "步骤8: 配置防火墙..."
-
-# 允许HTTP和HTTPS
-ufw allow 80/tcp
-ufw allow 443/tcp
-
-# 启用防火墙（如果未启用）
-ufw --force enable
-
-log_info "防火墙配置完成"
-
-# ========================================
-# 步骤9: 验证部署
-# ========================================
-log_info "步骤9: 验证部署..."
-
-# 等待服务启动
-sleep 10
-
-# 检查服务状态
-if systemctl is-active --quiet warehouse-system; then
-    log_info "✅ 应用服务运行正常"
-else
-    log_error "❌ 应用服务启动失败"
-    systemctl status warehouse-system
-fi
-
-# 检查Nginx状态
-if systemctl is-active --quiet nginx; then
-    log_info "✅ Nginx服务运行正常"
-else
-    log_error "❌ Nginx服务启动失败"
-    systemctl status nginx
-fi
-
-# 检查网站访问
-if curl -f http://localhost > /dev/null 2>&1; then
-    log_info "✅ 网站访问正常"
-else
-    log_warn "⚠️ 网站访问检查失败，请稍后手动验证"
-fi
-
+# ===== 第10步：启动应用 =====
 echo ""
-echo "========================================"
-echo "🎉 部署完成！"
-echo "========================================"
+echo "📦 第10步：启动应用..."
+pm2 delete kouzi 2>/dev/null || true
+pm2 start npx --name "kouzi" -- next start -p 3000
+pm2 save
+pm2 startup
+
+# ===== 完成 =====
 echo ""
-echo "🌐 网站地址: http://47.109.159.143"
-echo "🔧 管理后台: http://47.109.159.143/admin"
-echo "📊 API地址: http://47.109.159.143/api"
+echo "========================================="
+echo "  ✅ 部署完成！"
+echo "========================================="
 echo ""
-echo "🔑 默认登录信息:"
-echo "   用户名: admin"
-echo "   密码: 123456"
+echo "🌐 访问地址: http://001tf.com"
+echo "👤 用户名: admin"
+echo "🔑 密码: 123456"
 echo ""
-echo "📝 查看服务状态:"
-echo "   systemctl status warehouse-system"
-echo "   systemctl status nginx"
+echo "📊 查看状态: pm2 status"
+echo "📝 查看日志: pm2 logs kouzi"
+echo "🔄 重启应用: pm2 restart kouzi"
 echo ""
-echo "🔄 重启服务:"
-echo "   systemctl restart warehouse-system"
-echo "   systemctl restart nginx"
-echo ""
-echo "📜 查看日志:"
-echo "   journalctl -u warehouse-system -f"
-echo ""
-echo "========================================"
+echo "========================================="
